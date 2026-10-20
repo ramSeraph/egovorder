@@ -1,0 +1,128 @@
+name: Archive government orders
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 08:30 IST, matching the original workflows
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Source to archive
+        type: choice
+        options: [all, andhra_goir, telangana_goir]
+        default: all
+      from_date:
+        description: Start date (DD-MM-YYYY); overrides the lookback
+        type: string
+        default: ''
+      to_date:
+        description: End date (DD-MM-YYYY); blank uses today
+        type: string
+        default: ''
+      last_n_days:
+        description: Lookback days; blank resumes from the latest archived date
+        type: string
+        default: '180'
+      run_time_mins:
+        description: Download time budget per source, in minutes (1–300)
+        type: string
+        default: '30'
+      testing:
+        description: Upload to the Internet Archive sandbox
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    name: Archive ${{ matrix.source }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ${{ fromJSON(inputs.source == 'andhra_goir' && '["andhra_goir"]' || inputs.source == 'telangana_goir' && '["telangana_goir"]' || '["andhra_goir","telangana_goir"]') }}
+    concurrency:
+      group: goir-${{ matrix.source }}-${{ inputs.testing || false }}
+      cancel-in-progress: false
+    env:
+      SOURCE: ${{ matrix.source }}
+      FROM_DATE: ${{ inputs.from_date }}
+      TO_DATE: ${{ inputs.to_date }}
+      LAST_N_DAYS: ${{ github.event_name == 'schedule' && '180' || inputs.last_n_days }}
+      RUN_TIME_MINS: ${{ inputs.run_time_mins || '30' }}
+      TESTING_MODE: ${{ inputs.testing && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'requirements/*.txt'
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -r requirements/iasync.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Validate run settings
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
+          GCP_AUTH: ${{ secrets.GCP_AUTH }}
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: |
+          bash scripts/archive.sh --validate
+          if [[ "$SOURCE" == 'telangana_goir' ]]; then
+            [[ -n "$GCP_AUTH" && -n "$GCP_PROJECT" ]] || { echo "Set GCP_AUTH and GCP_PROJECT"; exit 1; }
+          else
+            [[ -n "$PROXY_IP_ADDRESS" ]] || { echo "Set PROXY_IP_ADDRESS"; exit 1; }
+          fi
+
+      - name: Restore unfinished downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: data/
+          key: egovorder-data-v1-${{ matrix.source }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            egovorder-data-v1-${{ matrix.source }}-${{ env.TESTING_MODE }}-
+
+      - name: Start Telangana GCP proxy
+        if: matrix.source == 'telangana_goir'
+        id: proxy
+        uses: ramSeraph/gcp-simple-proxy-action/start@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          simpleproxy-basicauth: ${{ secrets.PROXY_AUTH }}
+          simpleproxy-port: 8080
+
+      - name: Download and upload orders
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ matrix.source == 'andhra_goir' && secrets.PROXY_IP_ADDRESS || steps.proxy.outputs.ip_address }}
+          PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
+        run: bash scripts/archive.sh
+
+      - name: Stop Telangana GCP proxy
+        if: always() && matrix.source == 'telangana_goir' && steps.proxy.outputs.instance_name != ''
+        uses: ramSeraph/gcp-simple-proxy-action/stop@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          gcp-instance-name: ${{ steps.proxy.outputs.instance_name }}
+          gcp-fw-rule-name: ${{ steps.proxy.outputs.fw_rule_name }}
+
+      - name: Save unfinished downloads
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/
+          key: egovorder-data-v1-${{ matrix.source }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}

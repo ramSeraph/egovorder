@@ -92,15 +92,66 @@ not included.
 
 ## GitHub Actions
 
-The two archiver workflows are manually dispatched, as in the source branch.
-They run the selected checkout and accept optional dates or a day count.
-With no start date, they resume from the latest date in Internet Archive,
-falling back to the configured source start date.
+Keep the code and workflows together on `main`, and make `main` the repository's
+default branch. [GitHub runs scheduled workflows from the default branch](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
-Before running an archiver workflow on GitHub, configure repository secrets
-`IA_ACCESS_KEY` and `IA_SECRET_KEY`. The `testing` input selects the sandbox.
-Unfinished downloads are cached for the next run; successfully archived files
-are cleared. No scraping schedule is configured.
+[Archive government orders](.github/workflows/archive.yml) is the single
+downloader workflow. It checks out the triggering commit once and runs both
+sources as independent parallel jobs. It runs only on `main`; there is no
+`workspace` branch, branch override, or shared composite action to maintain.
+
+The existing operational settings from `egazette`'s `master` workflows are
+preserved:
+
+| Setting | Andhra Pradesh | Telangana |
+| --- | --- | --- |
+| Schedule | Daily at 03:00 UTC / 08:30 IST | Daily at 03:00 UTC / 08:30 IST |
+| Lookback | 180 days | 180 days |
+| Download budget | 30 minutes | 30 minutes |
+| Proxy | Existing host, port 8080 | Temporary GCP proxy in `asia-south1-a`, port 8080 |
+
+Configure these repository secrets before running it:
+
+| Secret | Purpose |
+| --- | --- |
+| `IA_ACCESS_KEY`, `IA_SECRET_KEY` | Internet Archive uploads |
+| `PROXY_IP_ADDRESS` | Existing Andhra proxy host |
+| `PROXY_AUTH` | Proxy basic authentication, shared by both sources |
+| `GCP_AUTH`, `GCP_PROJECT` | Telangana proxy provisioning; `GCP_AUTH` is the existing base64-encoded service-account JSON |
+
+Telangana uses the same `gcp-simple-proxy-action` version (`v0.0.2`) to start
+and stop its proxy. The stop step runs after a failed scrape or upload too.
+Proxies apply to portal downloads; Internet Archive queries and uploads use
+the normal connection.
+
+For a manual run, choose **Actions → Archive government orders → Run workflow**
+on `main`. Select `all`, `andhra_goir`, or `telangana_goir`. You can change the
+lookback and download budget, or provide an explicit start/end date
+(`DD-MM-YYYY`). An explicit start date takes precedence over the lookback.
+Leaving both the start date and lookback empty resumes from the latest archived
+date, falling back to the source's configured start date. `testing` selects the
+Internet Archive sandbox.
+
+Runs for the same source and destination are serialized. Unfinished downloads
+are cached for the next run; only successfully archived source files are
+cleared. Download time limits are cooperative and allow the current day's work
+to finish; proxy setup and uploads are outside that download budget.
+
+The workflow calls [scripts/archive.sh](scripts/archive.sh), which also runs
+locally with the same settings once dependencies and credentials are available:
+
+```sh
+# Set IA_ACCESS_KEY, IA_SECRET_KEY, PROXY_IP_ADDRESS and PROXY_AUTH first.
+SOURCE=andhra_goir bash scripts/archive.sh
+
+# Validate inputs without querying portals or Internet Archive.
+SOURCE=telangana_goir FROM_DATE=01-06-2025 TO_DATE=07-06-2025 \
+  bash scripts/archive.sh --validate
+```
+
+Local runs use the supplied proxy host; GCP provisioning is handled by the
+workflow. `DATA_DIR` defaults to `data`. Other overrides are `FROM_DATE`,
+`TO_DATE`, `LAST_N_DAYS`, `RUN_TIME_MINS`, and `TESTING_MODE`.
 
 The separate test workflow runs offline checks on pushes and pull requests.
 

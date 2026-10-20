@@ -1,3 +1,6 @@
+# Adapted from egazette/srcs/basegazette.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import logging
 import datetime
 import urllib.request, urllib.parse, urllib.error

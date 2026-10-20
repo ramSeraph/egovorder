@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/xml_ops.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 from xml.sax import saxutils
 from xml.parsers.expat import ExpatError
 import datetime

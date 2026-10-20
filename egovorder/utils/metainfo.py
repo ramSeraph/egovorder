@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/metainfo.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import re
 
 URL = 'url'

@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/pdf_ops.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import pymupdf
 
 def convert_to_image_pdf(file_bytes):

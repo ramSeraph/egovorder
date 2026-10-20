@@ -1,3 +1,6 @@
+# Adapted from egazette/.github/workflows/andhra_goir.yml and telangana_goir.yml for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 name: Archive government orders
 
 on:

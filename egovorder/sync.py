@@ -1,3 +1,6 @@
+# Adapted from egazette/sync.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 """Download government orders and their metadata to local storage."""
 
 import argparse

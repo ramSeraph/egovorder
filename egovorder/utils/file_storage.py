@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/file_storage.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import os
 import logging
 import glob

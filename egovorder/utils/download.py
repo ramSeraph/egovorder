@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/download.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import multiprocessing
 import urllib.request, urllib.error, urllib.parse
 import time

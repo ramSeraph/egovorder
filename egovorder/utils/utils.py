@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/utils.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from . import proxylist

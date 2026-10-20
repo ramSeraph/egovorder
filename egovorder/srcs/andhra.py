@@ -1,3 +1,6 @@
+# Adapted from egazette/srcs/andhra.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 from http.cookiejar import CookieJar
 import os
 import re

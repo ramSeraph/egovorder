@@ -1,3 +1,6 @@
+# Adapted from egazette/srcs/datasrcs.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 """The complete set of supported government-order sources."""
 
 from .andhra import AndhraGOIR

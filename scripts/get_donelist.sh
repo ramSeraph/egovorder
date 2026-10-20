@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Adapted from egazette/scripts/get_donelist.sh for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 set -euo pipefail
 
 export GOIR_SOURCE="${1:?Usage: get_donelist.sh SOURCE FROM_DATE TO_DATE OUTPUT_FILE}"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Adapted from egazette/scripts/get_fromdate.sh for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 set -euo pipefail
 
 source_name="${1:?Usage: get_fromdate.sh SOURCE [OUTPUT_FILE]}"

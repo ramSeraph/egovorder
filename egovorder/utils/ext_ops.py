@@ -1,3 +1,6 @@
+# Adapted from egazette/utils/ext_ops.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import re
 import magic
 from pathlib import Path

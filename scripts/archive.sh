@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Adapted from egazette/.github/actions/common/action.yml for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 # Shared local/CI entry point. Proxy lifecycle and data caching belong to CI.
 set -euo pipefail
 

@@ -1,3 +1,6 @@
+# Adapted from egazette/iasync.py for egovorder.
+# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
+
 import logging
 import os
 import re

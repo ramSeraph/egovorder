@@ -176,5 +176,7 @@ storage, and archive code. Gazette scrapers and unrelated tools were omitted.
 The extraction starts a separate Git history; the original repository and its
 local files are untouched.
 
-The inherited Apache 2.0 license and attribution are retained in
-[LICENSE](LICENSE) and [COPYING](COPYING).
+This repository, including additions and modifications made for egovorder,
+uses the same Apache License, Version 2.0 as egazette. The original copyright
+notice for Sushant Sinha is retained in [LICENSE](LICENSE); the full license
+terms are in [COPYING](COPYING).

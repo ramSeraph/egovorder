@@ -1,6 +1,8 @@
 # egovorder
 
-Download and archive government orders from the Andhra Pradesh and Telangana
+egovorder is a GOIR-focused version of
+[egazette by Sushant Sinha](https://github.com/sushant354/egazette). It downloads
+and archives government orders from the Andhra Pradesh and Telangana
 Government Order Issue Registries (GOIR).
 
 Only these sources are registered:
@@ -95,10 +97,23 @@ not included.
 Keep the code and workflows together on `main`, and make `main` the repository's
 default branch. [GitHub runs scheduled workflows from the default branch](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
-[Archive government orders](.github/workflows/archive.yml) is the single
-downloader workflow. It checks out the triggering commit once and runs both
-sources as independent parallel jobs. It runs only on `main`; there is no
-`workspace` branch, branch override, or shared composite action to maintain.
+| Workflow | When it runs | Purpose |
+| --- | --- | --- |
+| [Archive government orders](https://github.com/ramSeraph/egovorder/actions/workflows/archive.yml) | Daily at 08:30 IST, or manually | Recent orders, with a default 180-day lookback |
+| [Catch up government orders](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml) | Manually | Historical orders, uploading and saving progress after each day |
+| [Keep scheduled workflows active](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml) | First of each month at 08:47 IST, or manually | Commit a timestamp to keep the repository active |
+| [Offline tests](https://github.com/ramSeraph/egovorder/actions/workflows/tests.yml) | Pushes and pull requests | Fixture tests without portal access or uploads |
+
+Both archive workflows use the same [shared job](.github/workflows/run-archive.yml),
+check out the triggering commit once, and run the selected sources as independent
+parallel jobs. They run only on `main`; no branch switching is needed.
+Each archive job has a **four-hour maximum**, including setup and cleanup.
+
+The keep-alive workflow updates `.github/keepalive` on `main` using the built-in
+`GITHUB_TOKEN` with `contents: write`; it needs no extra secret. This provides
+monthly repository activity before GitHub's
+[60-day inactivity cutoff](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+If scheduled workflows have already been disabled, enable them in Actions first.
 
 The existing operational settings from `egazette`'s `master` workflows are
 preserved:
@@ -137,7 +152,7 @@ are cached for the next run; only successfully archived source files are
 cleared. Download time limits are cooperative and allow the current day's work
 to finish; proxy setup and uploads are outside that download budget.
 
-The workflow calls [scripts/archive.sh](scripts/archive.sh), which also runs
+The daily workflow calls [scripts/archive.sh](scripts/archive.sh), which also runs
 locally with the same settings once dependencies and credentials are available:
 
 ```sh
@@ -153,7 +168,46 @@ Local runs use the supplied proxy host; GCP provisioning is handled by the
 workflow. `DATA_DIR` defaults to `data`. Other overrides are `FROM_DATE`,
 `TO_DATE`, `LAST_N_DAYS`, `RUN_TIME_MINS`, and `TESTING_MODE`.
 
-The separate test workflow runs offline checks on pushes and pull requests.
+### Historical catch-up
+
+Open [Catch up government orders](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml),
+choose **Run workflow** on `main`, and select either source or `all`. It uses
+the same six secrets and proxy setup as the daily workflow.
+
+Leave `from_date` blank to start with the source's earliest configured date:
+1 June 2008 for Andhra Pradesh or 2 June 2014 for Telangana. Set an explicit
+`from_date` to backfill a narrower range. `to_date` defaults to today; both dates
+use `DD-MM-YYYY`.
+
+The default work budget is **210 minutes (3½ hours)**, with a **240-minute
+(four-hour) job limit**. The work budget includes archive queries, downloads,
+uploads, and retries; the remaining time allows for setup, proxy shutdown,
+and cache saving. Manual work/download budgets must be between 1 and 210 minutes.
+
+Catch-up uploads unfinished cached files first, then downloads and uploads one
+day at a time. It advances its checkpoint only after that day's download and
+upload commands succeed. Catch-up treats failed portal requests, unrecognized
+result pages, and invalid downloads as errors so those days can be retried.
+If the work budget expires, the unfinished day and its files are retained.
+
+Run it again with the same source, start date, and sandbox setting to resume.
+Checkpoints are stored under `data/catchup/`, separately for each source,
+destination, and requested start date. Catch-up caches are separate from daily
+caches; both workflows share a concurrency group so they do not archive the
+same source to the same destination simultaneously. If a cache is unavailable,
+catch-up starts at the requested start date and skips documents already present
+in Internet Archive.
+
+For a local catch-up run, set the same credentials and proxy environment
+variables as for `archive.sh`, then run from this checkout:
+
+```sh
+SOURCE=andhra_goir FROM_DATE=01-06-2008 TO_DATE=30-06-2008 \
+  RUN_TIME_MINS=210 python -m egovorder.catchup
+```
+
+`python -m egovorder.catchup --validate` checks settings without contacting
+services. The offline test workflow needs no secrets.
 
 ## Tests
 
@@ -168,13 +222,15 @@ They do not contact either government portal or upload documents.
 
 ## Origin and license
 
-Extracted from the local `workspace` branch of `ramSeraph/egazette` at commit
+The original project is
+[sushant354/egazette](https://github.com/sushant354/egazette).
+This version extracts the GOIR implementation from the `workspace` branch of
+the [ramSeraph/egazette fork](https://github.com/ramSeraph/egazette), at commit
 `9938d8d9b3bbe2252f197c0543116d3a2cd32087`.
 
 This repository contains the two GOIR scrapers and their shared download,
 storage, and archive code. Gazette scrapers and unrelated tools were omitted.
-The extraction starts a separate Git history; the original repository and its
-local files are untouched.
+The extraction starts a separate Git history.
 
 This repository, including additions and modifications made for egovorder,
 uses the same Apache License, Version 2.0 as egazette. The original copyright

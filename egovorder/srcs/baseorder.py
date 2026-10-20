@@ -46,11 +46,17 @@ class Downloader:
         self.retry_delay_max_secs = 300
         self.request_timeout_secs = 400
         self.retriable_status_codes = [503, 504, 403, 429]
+        self.strict_downloads = os.environ.get('EGOVORDER_STRICT_DOWNLOADS') == '1'
 
 
         self.logger      = logging.getLogger('crawler.%s' % self.name)
 
         self.useragent   = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:59.0) Gecko/20100101 Firefox/59.0'
+
+    def download_error(self, message, *args):
+        self.logger.warning(message, *args)
+        if self.strict_downloads:
+            raise RuntimeError(message % args if args else message)
 
     def all_downloads(self, event):
         start_date = get_start_date(self.name)
@@ -158,6 +164,7 @@ class Downloader:
 
             i += 1
 
+        self.download_error('Could not download %s after retries', url)
         return None
 
     def download_url_onetime(self, url, loadcookies, savecookies, \
@@ -288,6 +295,7 @@ class BaseOrder(Downloader):
                                          headers = hdrs, encodepost = encodepost)
 
             if response == None:
+                self.download_error('No document response for %s', relurl)
                 return updated
 
             doc = response.webpage
@@ -296,9 +304,9 @@ class BaseOrder(Downloader):
                     updated = True
                     self.logger.info('Saved rawfile %s' % relurl)
                 else:
-                    self.logger.info('not able to save the doc %s' % relurl)
+                    self.download_error('Not able to save the document %s', relurl)
             else:
-                self.logger.info('doc not downloaded %s' % relurl)
+                self.download_error('Document missing or invalid for %s', relurl)
         else:
             self.logger.info('rawdoc already exists %s' % relurl)
         if validurl:

@@ -1,0 +1,42 @@
+name: Catch up government orders
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Source to catch up
+        type: choice
+        options: [all, andhra_goir, telangana_goir]
+        default: all
+      from_date:
+        description: Start date (DD-MM-YYYY); blank uses the source's earliest date
+        type: string
+        default: ''
+      to_date:
+        description: End date (DD-MM-YYYY); blank uses today
+        type: string
+        default: ''
+      run_time_mins:
+        description: Total catch-up work budget in minutes (1–210); job limit is 4 hours
+        type: string
+        default: '210'
+      testing:
+        description: Upload to the Internet Archive sandbox
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  catchup:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/run-archive.yml
+    with:
+      mode: catchup
+      source: ${{ inputs.source }}
+      from_date: ${{ inputs.from_date }}
+      to_date: ${{ inputs.to_date }}
+      run_time_mins: ${{ inputs.run_time_mins }}
+      testing: ${{ inputs.testing }}
+    secrets: inherit

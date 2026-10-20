@@ -173,13 +173,16 @@ class AndhraGOIR(BaseOrder):
 
         d = utils.parse_webpage(webpage, self.parser)
         if not d:
-            self.logger.warning('Unable to parse search result page for %s', dateobj)
+            self.download_error('Unable to parse search result page for %s', dateobj)
             return metainfos, nextpage
 
         tables = d.find_all('table', {'id': 'FileMoveList2'})
 
+        if not tables and self.get_search_form(webpage, self.search_endp) is not None and re.search(
+                r'\bno (?:records?|results?|data) (?:found|available)\b', d.get_text(' ', strip=True), re.I):
+            return metainfos, nextpage
         if len(tables) != 1:
-            self.logger.warning('Could not find the result table for %s', dateobj)
+            self.download_error('Could not find the result table for %s', dateobj)
             return metainfos, nextpage
 
         order = None
@@ -198,11 +201,12 @@ class AndhraGOIR(BaseOrder):
         newdata = []
         href = nextpage.get('href')
         if not href:
+            self.download_error('Missing next-page link')
             return None
 
         reobj = re.search(r'__doPostBack\(\'(?P<etarget>[^\']+)', href)
         if not reobj:
-            self.logger.warning('Could not get link for next page')
+            self.download_error('Could not get link for next page')
             return None
 
         etarget = reobj.groupdict()['etarget']
@@ -225,6 +229,7 @@ class AndhraGOIR(BaseOrder):
                 download = metainfo.pop('download')
                 href = download.get('href')
                 if not href:
+                    self.download_error('Missing order download link')
                     continue
 
                 groups = []
@@ -232,6 +237,7 @@ class AndhraGOIR(BaseOrder):
                     groups.append(reobj.groupdict()['obj'])
 
                 if not groups or len(groups) < 2:
+                    self.download_error('Unrecognized order download link')
                     continue
 
                 gid       = groups[0]
@@ -255,14 +261,14 @@ class AndhraGOIR(BaseOrder):
 
         response = self.download_url(self.baseurl, savecookies = cookiejar)
         if not response or not response.webpage:
-            self.logger.warning('Unable to get %s date %s', self.baseurl, dateobj)
+            self.download_error('Unable to get %s date %s', self.baseurl, dateobj)
             return dls
 
         curr_url = response.response_url
 
         postdata = self.get_form_data(response.webpage, dateobj)
         if postdata is None:
-            self.logger.warning('Unable to retreive form data for date %s', dateobj)
+            self.download_error('Unable to retreive form data for date %s', dateobj)
             return dls
 
         postdata.append(('ctl00$ContentPlaceHolder1$BtnSearch', 'Search'))
@@ -288,5 +294,7 @@ class AndhraGOIR(BaseOrder):
             pagenum += 1
             self.logger.info('Going to page %d for date %s', pagenum, dateobj)
             response = self.download_nextpage(nextpage, curr_url, postdata, cookiejar)
+        else:
+            self.download_error('Unable to fetch result page for %s', dateobj)
 
         return dls

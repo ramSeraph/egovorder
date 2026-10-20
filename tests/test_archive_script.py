@@ -176,6 +176,7 @@ class ArchiveScriptTests(unittest.TestCase):
         cases = (
             {"SOURCE": "central"},
             {"RUN_TIME_MINS": "0"},
+            {"RUN_TIME_MINS": "211"},
             {"RUN_TIME_MINS": "301"},
             {"LAST_N_DAYS": "-1"},
             {"TO_DATE": "31-02-2025"},

@@ -1,0 +1,158 @@
+# Adapted from egazette's GOIR workflows for egovorder.
+# Shared job for daily downloads and historical catch-up runs; see LICENSE.
+
+name: Run GOIR archive job
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        default: recent
+      source:
+        type: string
+        default: all
+      from_date:
+        type: string
+        default: ''
+      to_date:
+        type: string
+        default: ''
+      last_n_days:
+        type: string
+        default: '180'
+      run_time_mins:
+        type: string
+        default: '30'
+      testing:
+        type: boolean
+        default: false
+    secrets:
+      IA_ACCESS_KEY:
+        required: true
+      IA_SECRET_KEY:
+        required: true
+      PROXY_IP_ADDRESS:
+        required: false
+      PROXY_AUTH:
+        required: false
+      GCP_AUTH:
+        required: false
+      GCP_PROJECT:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    name: ${{ inputs.mode }} — ${{ matrix.source }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ${{ fromJSON(inputs.source == 'andhra_goir' && '["andhra_goir"]' || inputs.source == 'telangana_goir' && '["telangana_goir"]' || '["andhra_goir","telangana_goir"]') }}
+    concurrency:
+      group: goir-${{ matrix.source }}-${{ inputs.testing || false }}
+      cancel-in-progress: false
+    env:
+      SOURCE: ${{ matrix.source }}
+      ARCHIVE_MODE: ${{ inputs.mode }}
+      CACHE_PREFIX: ${{ inputs.mode == 'catchup' && 'egovorder-catchup-v1' || 'egovorder-data-v1' }}
+      FROM_DATE: ${{ inputs.from_date }}
+      TO_DATE: ${{ inputs.to_date }}
+      LAST_N_DAYS: ${{ inputs.last_n_days }}
+      RUN_TIME_MINS: ${{ inputs.run_time_mins }}
+      TESTING_MODE: ${{ inputs.testing && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+        timeout-minutes: 2
+
+      - uses: astral-sh/setup-uv@v5
+        timeout-minutes: 3
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'requirements/*.txt'
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: |
+          uv venv --python 3.12
+          uv pip install -r requirements/iasync.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Validate run settings
+        timeout-minutes: 1
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
+          GCP_AUTH: ${{ secrets.GCP_AUTH }}
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: |
+          case "$ARCHIVE_MODE" in
+            recent) bash scripts/archive.sh --validate ;;
+            catchup) python -m egovorder.catchup --validate ;;
+            *) echo "Unknown archive mode"; exit 1 ;;
+          esac
+          if [[ "$SOURCE" == 'telangana_goir' ]]; then
+            [[ -n "$GCP_AUTH" && -n "$GCP_PROJECT" ]] || { echo "Set GCP_AUTH and GCP_PROJECT"; exit 1; }
+          else
+            [[ -n "$PROXY_IP_ADDRESS" ]] || { echo "Set PROXY_IP_ADDRESS"; exit 1; }
+          fi
+
+      - name: Restore unfinished downloads and progress
+        timeout-minutes: 3
+        uses: actions/cache/restore@v4
+        with:
+          path: data/
+          key: ${{ env.CACHE_PREFIX }}-${{ matrix.source }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ env.CACHE_PREFIX }}-${{ matrix.source }}-${{ env.TESTING_MODE }}-
+
+      - name: Start Telangana GCP proxy
+        timeout-minutes: 5
+        if: matrix.source == 'telangana_goir'
+        id: proxy
+        uses: ramSeraph/gcp-simple-proxy-action/start@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          simpleproxy-basicauth: ${{ secrets.PROXY_AUTH }}
+          simpleproxy-port: 8080
+
+      - name: Download and upload orders
+        timeout-minutes: 212
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ matrix.source == 'andhra_goir' && secrets.PROXY_IP_ADDRESS || steps.proxy.outputs.ip_address }}
+          PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
+        run: |
+          if [[ "$ARCHIVE_MODE" == 'catchup' ]]; then
+            python -m egovorder.catchup
+          else
+            bash scripts/archive.sh
+          fi
+
+      - name: Stop Telangana GCP proxy
+        timeout-minutes: 4
+        if: always() && matrix.source == 'telangana_goir' && steps.proxy.outputs.instance_name != ''
+        uses: ramSeraph/gcp-simple-proxy-action/stop@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          gcp-instance-name: ${{ steps.proxy.outputs.instance_name }}
+          gcp-fw-rule-name: ${{ steps.proxy.outputs.fw_rule_name }}
+
+      - name: Save unfinished downloads and progress
+        timeout-minutes: 4
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/
+          key: ${{ env.CACHE_PREFIX }}-${{ matrix.source }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}

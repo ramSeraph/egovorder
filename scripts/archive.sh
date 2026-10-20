@@ -37,8 +37,8 @@ from datetime import datetime, timedelta
 
 try:
     minutes = int(os.environ["RUN_TIME_MINS"])
-    if not 1 <= minutes <= 300:
-        raise ValueError("RUN_TIME_MINS must be between 1 and 300")
+    if not 1 <= minutes <= 210:
+        raise ValueError("RUN_TIME_MINS must be between 1 and 210")
     end = datetime.strptime(os.environ["TO_DATE"], "%d-%m-%Y")
     start = os.environ["FROM_DATE"]
     days = os.environ["LAST_N_DAYS"]

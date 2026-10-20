@@ -81,6 +81,63 @@ class SourceTests(unittest.TestCase):
                     ([], None),
                 )
 
+    def test_strict_catchup_rejects_unrecognized_pages_but_accepts_explicit_empty_results(self):
+        for name, cls in SOURCES:
+            with self.subTest(source=name):
+                scraper = cls(name, None)
+                scraper.strict_downloads = True
+                with self.assertRaises(RuntimeError):
+                    scraper.parse_search_results(b"<html>Portal unavailable</html>", DATE, 1)
+                self.assertEqual(
+                    scraper.parse_search_results(
+                        b"<form action='./'>No records found</form>", DATE, 1
+                    ),
+                    ([], None),
+                )
+
+    def test_strict_catchup_rejects_failed_home_and_result_requests(self):
+        for name, cls in SOURCES:
+            for responses in (
+                [None],
+                [response(b"<html>Invalid form</html>", "https://portal.invalid/")],
+                [response((FIXTURES / f"{name}.html").read_bytes(), "https://portal.invalid/"), None],
+            ):
+                with self.subTest(source=name, responses=len(responses)):
+                    scraper = cls(name, None)
+                    scraper.strict_downloads = True
+                    with patch.object(scraper, "download_url", side_effect=responses):
+                        with self.assertRaises(RuntimeError):
+                            scraper.download_oneday(f"{name}/{DATE}", DATE)
+
+    def test_strict_catchup_rejects_failed_pagination_after_partial_downloads(self):
+        for name, cls in SOURCES:
+            with self.subTest(source=name), tempfile.TemporaryDirectory() as temp:
+                scraper = cls(name, FileManager(temp, False, False))
+                scraper.strict_downloads = True
+                page = (FIXTURES / f"{name}.html").read_bytes()
+                responses = [
+                    response(page, scraper.baseurl), response(page, scraper.baseurl),
+                    response(PDF, scraper.baseurl), None,
+                ]
+                with patch.object(scraper, "download_url", side_effect=responses):
+                    with self.assertRaises(RuntimeError):
+                        scraper.download_oneday(f"{name}/{DATE}", DATE)
+                self.assertTrue(list((Path(temp) / "raw" / name).rglob("*.pdf")))
+
+    def test_strict_catchup_rejects_invalid_documents_and_download_links(self):
+        for name, cls in SOURCES:
+            with self.subTest(source=name), tempfile.TemporaryDirectory() as temp:
+                scraper = cls(name, FileManager(temp, False, False))
+                scraper.strict_downloads = True
+                with patch.object(scraper, "download_url", return_value=response(b"<html>Error</html>", scraper.baseurl)):
+                    with self.assertRaises(RuntimeError):
+                        scraper.save_order(f"{name}/{DATE}/bad", scraper.baseurl, MetaInfo(), min_size=162)
+                self.assertEqual(list((Path(temp) / "metatags" / name).rglob("*.xml")), [])
+                orders, _ = scraper.parse_search_results((FIXTURES / f"{name}.html").read_bytes(), DATE, 1)
+                orders[0]["download"]["href"] = "javascript:invalid()"
+                with self.assertRaises(RuntimeError):
+                    scraper.download_metainfos(f"{name}/{DATE}", orders, scraper.baseurl, [], None)
+
     def test_single_page_without_pagination_still_parses(self):
         for name, cls in SOURCES:
             with self.subTest(source=name):

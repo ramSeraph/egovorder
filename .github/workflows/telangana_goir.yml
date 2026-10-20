@@ -1,0 +1,43 @@
+name: Telangana Government Order Issue Registry archiver
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: Start date (DD-MM-YYYY); blank resumes from Internet Archive
+        type: string
+        default: ''
+      to_date:
+        description: End date (DD-MM-YYYY); blank uses today
+        type: string
+        default: ''
+      last_n_days:
+        description: Optional lookback from to_date, overriding from_date
+        type: string
+        default: ''
+      testing:
+        description: Upload to the Internet Archive sandbox
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.7
+      - uses: ./.github/actions/common
+        with:
+          source: telangana_goir
+          from_date: ${{ inputs.from_date }}
+          to_date: ${{ inputs.to_date }}
+          last_n_days: ${{ inputs.last_n_days }}
+          testing: ${{ inputs.testing }}
+          ia_access_key: ${{ secrets.IA_ACCESS_KEY }}
+          ia_secret_key: ${{ secrets.IA_SECRET_KEY }}

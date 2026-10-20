@@ -1,0 +1,109 @@
+name: Download and archive government orders
+description: Download one GOIR source and upload its orders to Internet Archive
+
+inputs:
+  source:
+    description: GOIR source name
+    required: true
+  from_date:
+    description: Start date in DD-MM-YYYY; defaults to the latest archived date
+    default: ''
+  to_date:
+    description: End date in DD-MM-YYYY; defaults to today
+    default: ''
+  last_n_days:
+    description: Look back this many days from to_date
+    default: ''
+  run_time_mins:
+    description: Minutes before requesting the scraper to stop
+    default: '300'
+  testing:
+    description: Use the Internet Archive sandbox collection
+    default: 'false'
+  ia_access_key:
+    description: Internet Archive access key
+    required: true
+  ia_secret_key:
+    description: Internet Archive secret key
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: 'requirements/*.txt'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        uv venv --python 3.12
+        uv pip install -r requirements/iasync.txt
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Restore unfinished downloads
+      uses: actions/cache/restore@v4
+      with:
+        path: data/
+        key: egovorder-data-v1-${{ inputs.source }}-${{ inputs.testing }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          egovorder-data-v1-${{ inputs.source }}-${{ inputs.testing }}-
+
+    - name: Download orders
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        FROM_DATE: ${{ inputs.from_date }}
+        TO_DATE: ${{ inputs.to_date }}
+        LAST_N_DAYS: ${{ inputs.last_n_days }}
+        RUN_TIME_MINS: ${{ inputs.run_time_mins }}
+        TESTING_MODE: ${{ inputs.testing }}
+      run: |
+        set -euo pipefail
+        [[ "$RUN_TIME_MINS" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid run_time_mins"; exit 1; }
+        if [[ "$TESTING_MODE" == 'true' ]]; then
+          export TESTING=1
+        fi
+        if [[ -z "$TO_DATE" ]]; then
+          export TO_DATE="$(date -u +'%d-%m-%Y')"
+        fi
+        if [[ -n "$LAST_N_DAYS" ]]; then
+          FROM_DATE="$(python -c 'import os; from datetime import datetime, timedelta; days = int(os.environ["LAST_N_DAYS"]); assert days >= 0; end = datetime.strptime(os.environ["TO_DATE"], "%d-%m-%Y"); print((end - timedelta(days=days)).strftime("%d-%m-%Y"))')"
+        fi
+        extra_args=()
+        if [[ -z "$FROM_DATE" ]]; then
+          bash scripts/get_fromdate.sh "$SOURCE" from_date.txt
+          FROM_DATE="$(cat from_date.txt)"
+        else
+          bash scripts/get_donelist.sh "$SOURCE" "$FROM_DATE" "$TO_DATE" donelist.txt
+          extra_args=(-L donelist.txt)
+        fi
+        python sync.py -s "$SOURCE" -D data -t "$FROM_DATE" -T "$TO_DATE" \
+          -W "$((RUN_TIME_MINS * 60))" "${extra_args[@]}"
+
+    - name: Upload orders
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        TESTING_MODE: ${{ inputs.testing }}
+        IA_ACCESS_KEY: ${{ inputs.ia_access_key }}
+        IA_SECRET_KEY: ${{ inputs.ia_secret_key }}
+      run: |
+        set -euo pipefail
+        extra_args=()
+        if [[ "$TESTING_MODE" == 'true' ]]; then
+          extra_args=(-S)
+        fi
+        python iasync.py -u -D data -s "$SOURCE" "${extra_args[@]}"
+
+    - name: Clear completed downloads
+      shell: bash
+      run: find data -type f -delete
+
+    - name: Save unfinished downloads
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: data/
+        key: egovorder-data-v1-${{ inputs.source }}-${{ inputs.testing }}-${{ github.run_id }}-${{ github.run_attempt }}

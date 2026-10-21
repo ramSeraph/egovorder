@@ -1,9 +1,8 @@
 # egovorder
 
-egovorder is a GOIR-focused version of
-[egazette by Sushant Sinha](https://github.com/sushant354/egazette). It downloads
-and archives government orders from the Andhra Pradesh and Telangana
-Government Order Issue Registries (GOIR).
+egovorder is a version of
+[egazette by Sushant Sinha](https://github.com/sushant354/egazette) for downloading
+and archiving government orders from Andhra Pradesh, Telangana and Uttarakhand.
 
 Only these sources are registered:
 
@@ -11,6 +10,7 @@ Only these sources are registered:
 | --- | --- | --- | --- |
 | `andhra_goir` | https://goir.ap.gov.in/ | `andhra-goir` | 2008-06-01 |
 | `telangana_goir` | https://goir.telangana.gov.in/ | `telangana-goir` | 2014-06-02 |
+| `uttarakhand_gos` | https://go.uk.gov.in/ | `uttarakhand-gos` | 1999-05-13 |
 
 ## Quick start
 
@@ -30,7 +30,8 @@ Set `IA_ACCESS_KEY` and `IA_SECRET_KEY` to upload downloaded orders:
 python iasync.py -u -D data -s andhra_goir
 ```
 
-Use `telangana_goir` for Telangana. Both commands support `--help`.
+Use `telangana_goir` for Telangana or `uttarakhand_gos` for Uttarakhand.
+Both commands support `--help`.
 
 ## Workflows
 
@@ -44,7 +45,7 @@ Use `telangana_goir` for Telangana. Both commands support `--help`.
 
 Extracted from the `workspace` branch of
 [ramSeraph/egazette](https://github.com/ramSeraph/egazette) at commit
-`9938d8d9b3bbe2252f197c0543116d3a2cd32087`, retaining the two GOIR scrapers.
+`9938d8d9b3bbe2252f197c0543116d3a2cd32087`, retaining its government-order scrapers.
 
 This repository uses Apache License, Version 2.0. The original copyright
 notice for Sushant Sinha is retained in [LICENSE](LICENSE); the full license

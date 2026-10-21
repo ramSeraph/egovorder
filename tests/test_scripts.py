@@ -32,7 +32,8 @@ class ResumeScriptTests(unittest.TestCase):
         )
 
     def test_no_archive_items_fall_back_to_source_start_dates(self):
-        for source, expected in (("andhra_goir", "01-06-2008"), ("telangana_goir", "02-06-2014")):
+        for source, expected in (("andhra_goir", "01-06-2008"), ("telangana_goir", "02-06-2014"),
+                                 ("uttarakhand_gos", "13-05-1999")):
             with self.subTest(source=source):
                 result = self.run_script("get_fromdate.sh", source)
                 self.assertEqual(result.stdout.strip(), expected)

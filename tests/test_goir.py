@@ -31,8 +31,8 @@ def response(body, url):
 
 
 class SourceTests(unittest.TestCase):
-    def test_only_goir_sources_are_enabled(self):
-        expected = {"andhra_goir", "telangana_goir"}
+    def test_only_government_order_sources_are_enabled(self):
+        expected = {"andhra_goir", "telangana_goir", "uttarakhand_gos"}
         self.assertEqual(set(datasrcs_info.srcinfos), expected)
         self.assertEqual({obj.name for obj in datasrcs.get_srcobjs([], None)}, expected)
         self.assertEqual(len(datasrcs.get_srcobjs(["andhra_goir", "andhra_goir"], None)), 1)
@@ -292,13 +292,13 @@ class SourceTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_download_command_defaults_to_both_sources(self):
+    def test_download_command_defaults_to_all_sources(self):
         with tempfile.TemporaryDirectory() as temp, patch(
             "egovorder.sync.download.parallel_download", return_value=True
         ) as run:
             self.assertEqual(sync.main(["-D", temp, "-T", "01-06-2025"]), 0)
             args = run.call_args.args
-            self.assertEqual([obj.name for obj in args[0]], ["andhra_goir", "telangana_goir"])
+            self.assertEqual([obj.name for obj in args[0]], ["andhra_goir", "telangana_goir", "uttarakhand_gos"])
             self.assertEqual(args[2:4], (datetime.datetime(2025, 6, 1),) * 2)
 
     def test_failed_worker_makes_the_command_fail(self):

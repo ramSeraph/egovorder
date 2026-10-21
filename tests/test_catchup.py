@@ -124,12 +124,22 @@ class CatchupTests(unittest.TestCase):
         self.assertEqual(Settings.from_env(self.env).next_date(), date(2025, 6, 2))
 
     def test_defaults_use_historical_start_and_210_minutes(self):
-        for source, expected in (("andhra_goir", date(2008, 6, 1)), ("telangana_goir", date(2014, 6, 2))):
+        for source, expected in (("andhra_goir", date(2008, 6, 1)), ("telangana_goir", date(2014, 6, 2)),
+                                 ("uttarakhand_gos", date(1999, 5, 13))):
             with self.subTest(source=source):
                 env = dict(self.env, SOURCE=source, FROM_DATE="", RUN_TIME_MINS="")
                 settings = Settings.from_env(env)
                 self.assertEqual(settings.start, expected)
                 self.assertEqual(settings.minutes, 210)
+
+    def test_uttarakhand_catchup_uploads_and_checkpoints_each_day(self):
+        self.env["SOURCE"] = "uttarakhand_gos"
+        self.run_catchup()
+        self.assertEqual(len(self.calls("sync.py")), 2)
+        self.assertEqual(len(self.calls("iasync.py")), 2)
+        self.assertEqual(Settings.from_env(self.env).next_date(), date(2025, 6, 3))
+        for call in self.calls("sync.py"):
+            self.assertIn("in.gov.uttarakhand.go.", call["done"])
 
     def test_budget_expiry_does_not_advance_an_unfinished_day(self):
         settings = Settings.from_env(self.env)

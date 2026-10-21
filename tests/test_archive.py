@@ -33,12 +33,13 @@ class ArchiveTests(unittest.TestCase):
             self.archive = OrderIA(self.storage, "fake-access", "fake-secret", "info", None, False)
 
     def test_metadata_keeps_goir_collection_title_and_fields(self):
-        for source, collection in (("andhra_goir", "andhra-goir"), ("telangana_goir", "telangana-goir")):
+        for source, collection in (("andhra_goir", "andhra-goir"), ("telangana_goir", "telangana-goir"),
+                                   ("uttarakhand_gos", "uttarakhand-gos")):
             with self.subTest(source=source):
                 result = self.metadata.get_ia_metadata(srcinfos[source], False)
                 self.assertEqual(result["collection"], collection)
                 self.assertEqual(result["creator"], srcinfos[source]["source"])
-                self.assertEqual(result["language"], ["eng", "tel"])
+                self.assertEqual(result["language"], ["eng", "hin"] if source == "uttarakhand_gos" else ["eng", "tel"])
                 self.assertEqual(result["date"], "2025-06-01")
                 self.assertIn("Manuscript, Number 42", result["title"])
                 self.assertIn("Order Number", result["description"])

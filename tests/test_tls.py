@@ -10,7 +10,8 @@ from unittest.mock import patch
 import requests
 
 from egovorder.srcs.andhra import AndhraGOIR
-from egovorder.utils.tls import GOIR_HOSTS, GoirHTTPSHandler, configure_goir_tls
+from egovorder.srcs.uttarakhand import UttarakhandGO
+from egovorder.utils.tls import GOIR_HOSTS, LEGACY_SERVER_CONNECT, GoirHTTPSHandler, configure_goir_tls
 
 
 def expired():
@@ -78,6 +79,29 @@ class RequestsTlsTests(unittest.TestCase):
 
 
 class UrllibTlsTests(unittest.TestCase):
+    def test_uttarakhand_legacy_connection_keeps_verification_and_is_host_scoped(self):
+        scraper = UttarakhandGO('uttarakhand_gos', None)
+        sent = []
+
+        def open(handler, connection, request, **kwargs):
+            context = kwargs['context']
+            is_uttarakhand = request.full_url == scraper.baseurl
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+            if is_uttarakhand:
+                self.assertTrue(context.options & LEGACY_SERVER_CONNECT)
+                self.assertIs(context, handler.uttarakhand_context)
+            else:
+                self.assertIs(context, handler._context)
+            sent.append(request.full_url)
+            return response(request.full_url, 'https://archive.org/' if is_uttarakhand else None)
+
+        with patch.object(GoirHTTPSHandler, 'do_open', autospec=True, side_effect=open):
+            for url in (scraper.baseurl, 'https://go.uk.gov.in.example.org/'):
+                result = scraper.download_url_onetime(url, None, None, None, None, True, {}, None)
+                self.assertIsNone(result.error)
+        self.assertEqual(sent, [scraper.baseurl, 'https://archive.org/', 'https://go.uk.gov.in.example.org/'])
+
     def test_expiry_is_handled_automatically_for_both_goir_sources(self):
         for host in GOIR_HOSTS:
             with self.subTest(host=host):
@@ -91,6 +115,8 @@ class UrllibTlsTests(unittest.TestCase):
 
     def test_other_certificate_failures_and_external_expiry_are_not_ignored(self):
         for url, reason in (("https://goir.ap.gov.in/", ssl.SSLCertVerificationError("hostname mismatch")),
+                            ("https://go.uk.gov.in/", expired()),
+                            ("https://go.uk.gov.in/", ssl.SSLCertVerificationError("hostname mismatch")),
                             ("https://archive.org/", expired()),
                             ("https://goir.ap.gov.in.example.org/", expired())):
             with self.subTest(url=url):

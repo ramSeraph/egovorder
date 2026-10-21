@@ -6,8 +6,8 @@
 set -euo pipefail
 
 case "${SOURCE:-}" in
-  andhra_goir|telangana_goir) ;;
-  *) echo "Set SOURCE to andhra_goir or telangana_goir" >&2; exit 1 ;;
+  andhra_goir|telangana_goir|uttarakhand_gos) ;;
+  *) echo "Set SOURCE to andhra_goir, telangana_goir or uttarakhand_gos" >&2; exit 1 ;;
 esac
 case "${1:-}" in
   ''|--validate) ;;

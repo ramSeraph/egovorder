@@ -5,16 +5,18 @@
 
 from .andhra import AndhraGOIR
 from .telangana import TelanganaGOIR
+from .uttarakhand import UttarakhandGO
 from .datasrcs_info import srcinfos
 
 srcdict = {
     "andhra_goir": AndhraGOIR,
     "telangana_goir": TelanganaGOIR,
+    "uttarakhand_gos": UttarakhandGO,
 }
 
 
 def get_srcobjs(srclist, storage):
-    """Use both sources by default, and reject unsupported source names."""
+    """Use all registered sources by default, and reject unsupported names."""
     names = list(dict.fromkeys(srclist or srcdict))
     unknown = set(names) - srcdict.keys()
     if unknown:

@@ -52,8 +52,8 @@ def execute(storage, srclist, agghosts, fromdate, todate, max_wait, all_dls, don
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Download Andhra Pradesh and Telangana GOIR orders. "
-        "Both sources run by default; without dates, each checks the last 15 days."
+        description="Download Andhra Pradesh, Telangana and Uttarakhand government orders. "
+        "All sources run by default; without dates, each checks the last 15 days."
     )
     parser.add_argument("-D", "--data-dir", required=True, type=Path)
     parser.add_argument("-s", "--source", action="append", choices=tuple(datasrcs.srcdict))

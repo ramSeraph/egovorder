@@ -30,6 +30,17 @@ srcinfos = {
         'expected_update_frequency': 5,
         'expected_delay': 4
     },
+    'uttarakhand_gos': {
+        'languages' : ['eng', 'hin'],
+        'source'    : 'Government of Uttarakhand',
+        'category'  : 'Uttarakhand Government Order',
+        'start_date': datetime(1999, 5, 13),
+        'prefix'    : 'in.gov.uttarakhand.go.',
+        'collection': 'uttarakhand-gos',
+        'type'      : 'goir',
+        'expected_update_frequency': 5,
+        'expected_delay': 20
+    },
 }
 
 def basic_identifier(relurl, metainfo, prefix_len):

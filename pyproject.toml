@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "egovorder"
 version = "0.1.0"
-description = "Andhra Pradesh and Telangana Government Order Issue Registry scrapers"
+description = "Andhra Pradesh, Telangana and Uttarakhand government order scrapers"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"

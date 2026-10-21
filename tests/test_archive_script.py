@@ -50,8 +50,12 @@ with open(os.environ["RUN_LOG"], "a") as log:
 if "-i" in sys.argv:
     if "NOT date:*" not in sys.argv[2]:
         prefix = "egaztest." if os.environ.get("TESTING") == "1" else ""
-        state = os.environ["SOURCE"].removesuffix("_goir")
-        print(f"{prefix}in.gov.{state}.goir.2025-06-01.known-order")
+        source_prefix = {
+            "andhra_goir": "in.gov.andhra.goir.",
+            "telangana_goir": "in.gov.telangana.goir.",
+            "uttarakhand_gos": "in.gov.uttarakhand.go.",
+        }[os.environ["SOURCE"]]
+        print(f"{prefix}{source_prefix}2025-06-01.known-order")
 else:
     print('{"date": "2025-06-01T00:00:00Z"}')
 """
@@ -103,7 +107,7 @@ class ArchiveScriptTests(unittest.TestCase):
         return [call for call in calls if command is None or call["command"] == command]
 
     def test_defaults_match_existing_scheduled_runs(self):
-        for source in ("andhra_goir", "telangana_goir"):
+        for source in ("andhra_goir", "telangana_goir", "uttarakhand_gos"):
             with self.subTest(source=source):
                 self.env["SOURCE"] = source
                 self.run_archive()
@@ -113,7 +117,8 @@ class ArchiveScriptTests(unittest.TestCase):
                 self.assertEqual(args[args.index("-t") + 1], "01-01-2025")
                 self.assertEqual(args[args.index("-T") + 1], "30-06-2025")
                 self.assertEqual(args[args.index("-W") + 1], "1800")
-                self.assertIn(f"in.gov.{source.removesuffix('_goir')}.goir.", download["done"])
+                prefix = "in.gov.uttarakhand.go." if source == "uttarakhand_gos" else f"in.gov.{source.removesuffix('_goir')}.goir."
+                self.assertIn(prefix, download["done"])
                 self.assertEqual(self.calls()[-1]["command"], "iasync.py")
 
     def test_proxy_is_used_only_for_portal_downloads(self):

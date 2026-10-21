@@ -1,4 +1,4 @@
-"""Automatically tolerate expired certificates on the two GOIR source hosts."""
+"""Host-specific TLS compatibility for government-order portals."""
 
 import http.client
 import logging
@@ -12,6 +12,8 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 GOIR_HOSTS = {"goir.ap.gov.in", "goir.telangana.gov.in"}
+# OpenSSL's SSL_OP_LEGACY_SERVER_CONNECT; Python exposes the name from 3.12.
+LEGACY_SERVER_CONNECT = getattr(ssl, 'OP_LEGACY_SERVER_CONNECT', 0x4)
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,8 @@ def configure_goir_tls(session):
 class GoirHTTPSHandler(urllib.request.HTTPSHandler):
     def __init__(self):
         super().__init__(context=ssl.create_default_context())
+        self.uttarakhand_context = ssl.create_default_context()
+        self.uttarakhand_context.options |= LEGACY_SERVER_CONNECT
         self.expired_hosts = set()
         self.expired_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self.expired_context.check_hostname = False
@@ -71,9 +75,10 @@ class GoirHTTPSHandler(urllib.request.HTTPSHandler):
 
     def https_open(self, request):
         host = urllib.parse.urlsplit(request.full_url).hostname
+        context = self.uttarakhand_context if host == 'go.uk.gov.in' else self._context
         if host not in self.expired_hosts:
             try:
-                return self.do_open(http.client.HTTPSConnection, request, context=self._context)
+                return self.do_open(http.client.HTTPSConnection, request, context=context)
             except urllib.error.URLError as exc:
                 if host not in GOIR_HOSTS or not expired_certificate(exc):
                     raise

@@ -42,7 +42,7 @@ class Settings:
     def from_env(cls, env):
         source = env.get("SOURCE", "")
         if source not in srcinfos:
-            raise ValueError("Set SOURCE to andhra_goir or telangana_goir")
+            raise ValueError(f"Set SOURCE to one of: {', '.join(srcinfos)}")
         for key in ("IA_ACCESS_KEY", "IA_SECRET_KEY"):
             if not env.get(key):
                 raise ValueError(f"Set {key}")

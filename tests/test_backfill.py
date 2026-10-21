@@ -116,6 +116,18 @@ class BackfillTests(unittest.TestCase):
         self.assertIsNone(self.runner.outcome(row()))
         self.upload.assert_not_called()
 
+    def test_server_outage_leaves_the_record_and_day_unfinished(self):
+        response = requests.Response()
+        response.status_code = 500
+        self.portal.session.request.return_value = response
+        self.portal.listed_rows = Mock(return_value=[row()])
+        with patch.object(job, "AndhraPortal", return_value=self.portal):
+            with self.assertRaises(requests.HTTPError):
+                self.runner.day(row()["date"], {job.key(row()): row()})
+        self.assertIsNone(self.runner.outcome(row()))
+        self.assertFalse((self.root / "days" / (row()["date"] + ".json")).exists())
+        self.upload.assert_not_called()
+
     def test_low_disk_stops_before_any_document_download(self):
         with patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=4 * 2**30)):
             with self.assertRaisesRegex(RuntimeError, "5 GiB"):

@@ -15,6 +15,7 @@ from .utils.tls import configure_goir_tls
 
 SOURCE = "andhra_goir"
 ANDHRA_ORIGIN = "https://goir.ap.gov.in/"
+SOURCE_RETRY_DELAYS = (30, 60, 120, 240, 300)
 
 
 def key(row):
@@ -37,7 +38,8 @@ def retryable(exc):
 
 
 def request(session, method, url, *, missing_ok=False, **kwargs):
-    for attempt in range(4):
+    delays = SOURCE_RETRY_DELAYS if url.startswith(ANDHRA_ORIGIN) else (2, 4, 6)
+    for attempt in range(len(delays) + 1):
         try:
             response = session.request(method, url, timeout=(15, 90), **kwargs)
             if missing_ok and response.status_code in (404, 410):
@@ -47,11 +49,12 @@ def request(session, method, url, *, missing_ok=False, **kwargs):
                 raise requests.ConnectionError("Portal returned its temporary server-error page")
             return response
         except requests.RequestException as exc:
-            if attempt == 3 or not retryable(exc):
+            if attempt == len(delays) or not retryable(exc):
                 raise
             # Exception messages can contain proxy credentials.
-            print(f"Retrying request after {type(exc).__name__}", flush=True)
-            time.sleep(2 + attempt * 2)
+            reason = f"HTTP {exc.response.status_code}" if exc.response is not None else type(exc).__name__
+            print(f"Retrying request after {reason}; waiting {delays[attempt]} seconds", flush=True)
+            time.sleep(delays[attempt])
 
 
 class AndhraPortal:

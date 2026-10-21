@@ -7,7 +7,9 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
+from egovorder import catchup as job
 from egovorder.catchup import BudgetExpired, Settings, catch_up, run_command
 from test_archive_script import COMMAND_STUB, IA_STUB
 
@@ -161,6 +163,29 @@ class CatchupTests(unittest.TestCase):
             catch_up(settings, runner=finish_day, clock=lambda: now[0])
         self.assertEqual(calls, ["01-06-2025"])
         self.assertEqual(settings.next_date(), date(2025, 6, 2))
+
+    def test_recent_archive_pauses_with_pending_uploads_before_the_step_timeout(self):
+        pending = self.data / "raw" / "andhra_goir" / "unfinished.pdf"
+        self.env["RUN_TIME_MINS"] = "30"
+
+        def expire(args, env, deadline):
+            self.assertEqual(args, ["bash", "scripts/archive.sh"])
+            self.assertEqual(env["RUN_TIME_MINS"], "30")
+            self.assertEqual(deadline, 100 + 210 * 60)
+            pending.parent.mkdir(parents=True)
+            pending.write_bytes(b"pending upload")
+            raise BudgetExpired
+
+        with patch.dict(os.environ, self.env), patch.object(job, "run_command", side_effect=expire), \
+             patch.object(job.time, "monotonic", return_value=100):
+            self.assertEqual(job.main(["--recent"]), 0)
+        self.assertEqual(pending.read_bytes(), b"pending upload")
+        self.assertFalse(Settings.from_env(self.env).checkpoint.exists())
+
+    def test_recent_archive_error_is_not_reported_as_a_budget_pause(self):
+        with patch.dict(os.environ, self.env), \
+             patch.object(job, "run_command", side_effect=subprocess.CalledProcessError(7, ["bash", "scripts/archive.sh"])):
+            self.assertEqual(job.main(["--recent"]), 1)
 
     def test_validate_requires_no_proxy_or_network(self):
         self.env.pop("PROXY_IP_ADDRESS")

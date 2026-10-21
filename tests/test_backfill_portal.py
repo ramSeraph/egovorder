@@ -1,7 +1,9 @@
 from datetime import date
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
+
+import requests
 
 from egovorder import backfill_portal as portal
 
@@ -96,6 +98,57 @@ class PortalTests(unittest.TestCase):
             result = portal.request(session, "GET", portal.ANDHRA_ORIGIN)
         self.assertEqual(result.content, b"document")
         self.assertEqual(session.request.call_count, 2)
+
+    def test_source_server_outage_gets_minutes_to_recover(self):
+        failed = requests.Response()
+        failed.status_code = 500
+        recovered = requests.Response()
+        recovered.status_code = 200
+        recovered._content = b"document"
+        session = Mock()
+        session.request.side_effect = [failed] * 5 + [recovered]
+        with patch.object(portal.time, "sleep") as sleep:
+            self.assertIs(portal.request(session, "GET", portal.ANDHRA_ORIGIN), recovered)
+        self.assertEqual(sleep.call_args_list, [call(n) for n in (30, 60, 120, 240, 300)])
+        self.assertEqual(session.request.call_count, 6)
+
+    def test_persistent_server_outage_remains_an_error(self):
+        failed = requests.Response()
+        failed.status_code = 500
+        session = Mock()
+        session.request.return_value = failed
+        with patch.object(portal.time, "sleep") as sleep:
+            with self.assertRaises(requests.HTTPError):
+                portal.request(session, "GET", portal.ANDHRA_ORIGIN)
+        self.assertEqual(session.request.call_count, 6)
+        self.assertEqual(sleep.call_count, 5)
+
+    def test_budget_can_interrupt_the_longer_backoff(self):
+        from egovorder.backfill import BudgetExpired
+        session = Mock()
+        session.request.side_effect = requests.Timeout()
+        with patch.object(portal.time, "sleep", side_effect=BudgetExpired):
+            with self.assertRaises(BudgetExpired):
+                portal.request(session, "GET", portal.ANDHRA_ORIGIN)
+        self.assertEqual(session.request.call_count, 1)
+
+    def test_missing_document_is_not_retried_as_an_outage(self):
+        response = requests.Response()
+        response.status_code = 404
+        session = Mock()
+        session.request.return_value = response
+        with patch.object(portal.time, "sleep") as sleep:
+            self.assertIs(portal.request(session, "GET", portal.ANDHRA_ORIGIN, missing_ok=True), response)
+        sleep.assert_not_called()
+
+    def test_archive_requests_keep_the_existing_short_retry_policy(self):
+        session = Mock()
+        session.request.side_effect = requests.Timeout()
+        with patch.object(portal.time, "sleep") as sleep:
+            with self.assertRaises(requests.Timeout):
+                portal.request(session, "GET", "https://archive.org/metadata/example")
+        self.assertEqual(sleep.call_args_list, [call(2), call(4), call(6)])
+        self.assertEqual(session.request.call_count, 4)
 
 
 if __name__ == "__main__":

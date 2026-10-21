@@ -101,6 +101,7 @@ jobs:
           fi
 
       - name: Restore unfinished downloads and progress
+        id: restore
         timeout-minutes: 3
         uses: actions/cache/restore@v4
         with:
@@ -132,7 +133,7 @@ jobs:
           if [[ "$ARCHIVE_MODE" == 'catchup' ]]; then
             python -m egovorder.catchup
           else
-            bash scripts/archive.sh
+            python -m egovorder.catchup --recent
           fi
 
       - name: Stop Telangana GCP proxy
@@ -148,7 +149,7 @@ jobs:
 
       - name: Save unfinished downloads and progress
         timeout-minutes: 4
-        if: always()
+        if: always() && steps.restore.outcome == 'success'
         uses: actions/cache/save@v4
         with:
           path: data/

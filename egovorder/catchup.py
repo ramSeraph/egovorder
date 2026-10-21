@@ -1,4 +1,4 @@
-"""Archive historical orders one day at a time, with resumable progress."""
+"""Archive orders with bounded work and resumable progress."""
 
 # Adapted from egazette's common-long action for egovorder.
 # Modified to checkpoint each completed day and enforce a total work budget.
@@ -21,6 +21,7 @@ from .srcs.datasrcs_info import get_start_date, srcinfos
 
 ROOT = Path(__file__).resolve().parents[1]
 STOP_GRACE_SECONDS = 5
+RECENT_WORK_MINUTES = 210
 
 
 class BudgetExpired(Exception):
@@ -188,6 +189,7 @@ def interrupted(signum, frame):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate", action="store_true", help="validate settings without contacting services")
+    parser.add_argument("--recent", action="store_true", help="bound the recent archive's downloads and uploads to 210 minutes")
     args = parser.parse_args(argv)
     previous_handler = signal.signal(signal.SIGTERM, interrupted)
     try:
@@ -196,9 +198,13 @@ def main(argv=None):
             return 0
         if not settings.env.get("PROXY_IP_ADDRESS"):
             raise ValueError("Set PROXY_IP_ADDRESS to the source proxy host")
-        catch_up(settings)
+        if args.recent:
+            run_command(["bash", "scripts/archive.sh"], settings.env,
+                        time.monotonic() + RECENT_WORK_MINUTES * 60)
+        else:
+            catch_up(settings)
     except BudgetExpired:
-        print("Catch-up work budget reached; rerun to resume the unfinished day.", flush=True)
+        print("Archive work budget reached; progress and unfinished files are retained for the next run.", flush=True)
     except KeyboardInterrupt:
         print("Catch-up interrupted; progress and unfinished files are retained.", file=sys.stderr)
         return 130

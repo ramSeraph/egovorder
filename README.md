@@ -101,10 +101,11 @@ default branch. [GitHub runs scheduled workflows from the default branch](https:
 | --- | --- | --- |
 | [Archive government orders](https://github.com/ramSeraph/egovorder/actions/workflows/archive.yml) | Daily at 08:30 IST, or manually | Recent orders, with a default 180-day lookback |
 | [Catch up government orders](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml) | Manually | Historical orders, uploading and saving progress after each day |
+| [Backfill Andhra date ranges](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml) | Manually | Parallel jobs for audited gaps, plus catch-up from the latest archived date |
 | [Keep scheduled workflows active](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml) | First of each month at 08:47 IST, or manually | Commit a timestamp to keep the repository active |
 | [Offline tests](https://github.com/ramSeraph/egovorder/actions/workflows/tests.yml) | Pushes and pull requests | Fixture tests without portal access or uploads |
 
-Both archive workflows use the same [shared job](.github/workflows/run-archive.yml),
+The daily and historical catch-up workflows use the same [shared job](.github/workflows/run-archive.yml),
 check out the triggering commit once, and run the selected sources as independent
 parallel jobs. They run only on `main`; no branch switching is needed.
 Each archive job has a **four-hour maximum**, including setup and cleanup.
@@ -208,6 +209,79 @@ SOURCE=andhra_goir FROM_DATE=01-06-2008 TO_DATE=30-06-2008 \
 
 `python -m egovorder.catchup --validate` checks settings without contacting
 services. The offline test workflow needs no secrets.
+
+### Andhra backfill jobs
+
+Open [Backfill Andhra date ranges](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml)
+and choose **Run workflow** on `main`. Select `all` to launch eight independent
+jobs simultaneously, or select one range to run or resume just that job.
+
+| Range | Work |
+| --- | --- |
+| `2008-07` | 1,762 audited candidates |
+| `2017-10` | 1,365 audited candidates |
+| `2018-09` | 1,038 audited candidates |
+| `2018-10` | 1,974 audited candidates |
+| `2018-11` | 1,833 audited candidates |
+| `2018-12` | 1,032 audited candidates |
+| `other` | Remaining 3,316 audited candidates, excluding the six months above |
+| `latest` | All orders from the latest archived Andhra order date through today |
+
+The historical jobs partition the [October 2026 audit plan](plans/README.md)
+without overlap: 12,320 candidates on 1,217 dates. Each job has its own cache,
+checkpoint, report and concurrency group, so one failure does not cancel the
+others or lose their progress.
+
+The `latest` job finds the newest order date in production IA on its first run.
+It includes that day to recover a partially archived day, then works forward to
+today. Later runs resume the saved next date instead of moving the start past
+unfinished work. Its initial date must be at least 12 December 2025, keeping it
+outside the historical gap partitions. Sandbox runs use the same production
+baseline and store progress and uploads separately.
+
+The job uses `IA_ACCESS_KEY`, `IA_SECRET_KEY`, `PROXY_IP_ADDRESS` and optional
+`PROXY_AUTH`, with the same Andhra proxy on port 8080. It runs for at most four
+hours, including setup and cleanup, with a default 210-minute work budget.
+Historical jobs run independently of daily scraping. Only `latest` shares the
+existing daily/catch-up lock, because those jobs can cover the same recent dates.
+The workflow is manual; rerun it to continue after the budget expires.
+
+Progress is saved after each order. Pending uploads resume before source
+downloads; accepted files are checked by checksum before retrying an interrupted
+upload. Successfully uploaded local files are deleted. A source file that is
+missing, empty or invalid is recorded as a gap and processing continues.
+Network failures and incomplete result pages stop the run without marking the
+date complete. Enable `retry_unavailable` to revisit known source gaps.
+
+The job summary reports outcomes for the selected dates. Its downloadable
+artifact contains `outcomes.csv`, `progress.json`, per-order receipts and any
+pending files. The next run of that range automatically restores its cached
+progress; sandbox progress is separate. Caches can expire, so the artifact also
+provides a recovery copy: extract it into `data/backfill/<range>/` for a local
+run with the same `--partition`. If neither is available, the worker checks IA
+again and skips complete archived items. Avoid requesting overlapping dates in
+a manual catch-up or local backfill while an Actions backfill is running.
+
+`insecure_source` defaults to enabled for Andhra's expired certificate. It
+disables certificate verification only for `https://goir.ap.gov.in/`; IA and
+redirects to other hosts keep verification enabled. Turn it off once the source
+certificate has been renewed.
+
+The same worker can run locally without a time limit. Credentials come from
+the IA environment variables or `~/.config/internetarchive/ia.ini`. A proxy is
+optional locally; set `PROXY_IP_ADDRESS` and `PROXY_AUTH` when one is needed.
+
+```sh
+python -m egovorder.backfill --validate
+python -m egovorder.backfill --upload --insecure-source --partition 2018-10
+python -m egovorder.backfill --upload --insecure-source --partition latest
+```
+
+Add `--minutes 210` for a local time budget, `--testing` for sandbox uploads,
+or `--retry-unavailable` to recheck source gaps. The state directory defaults
+to `data/backfill/<partition>/<production-or-sandbox>/`; `--state-dir` changes
+the base directory. Local audit runs also accept `--from-date` and `--to-date`
+in `DD-MM-YYYY` format to narrow the selected partition.
 
 ## Tests
 

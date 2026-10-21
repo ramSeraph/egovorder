@@ -1,0 +1,119 @@
+name: Backfill Andhra date ranges
+
+on:
+  workflow_dispatch:
+    inputs:
+      range:
+        description: Date range; all launches independent historical and latest-date jobs
+        type: choice
+        options: [all, '2008-07', '2017-10', '2018-09', '2018-10', '2018-11', '2018-12', other, latest]
+        default: all
+      run_time_mins:
+        description: Total work budget (1–210 minutes); job limit is 4 hours
+        type: string
+        default: '210'
+      retry_unavailable:
+        description: Recheck previously unavailable documents and missing source rows
+        type: boolean
+        default: false
+      insecure_source:
+        description: Ignore the expired certificate only for goir.ap.gov.in
+        type: boolean
+        default: true
+      testing:
+        description: Upload to the Internet Archive sandbox
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Andhra — ${{ matrix.range }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        range: ${{ fromJSON(inputs.range == 'all' && '["2008-07","2017-10","2018-09","2018-10","2018-11","2018-12","other","latest"]' || format('["{0}"]', inputs.range)) }}
+    concurrency:
+      # Historical ranges are independent. Latest catch-up overlaps daily scraping.
+      group: ${{ matrix.range == 'latest' && format('goir-andhra_goir-{0}', inputs.testing || false) || format('goir-audited-andhra-{0}-{1}', matrix.range, inputs.testing || false) }}
+      cancel-in-progress: false
+    env:
+      PARTITION: ${{ matrix.range }}
+      RUN_TIME_MINS: ${{ inputs.run_time_mins }}
+      TESTING_MODE: ${{ inputs.testing && 'true' || 'false' }}
+      RETRY_UNAVAILABLE: ${{ inputs.retry_unavailable && 'true' || 'false' }}
+      INSECURE_SOURCE: ${{ inputs.insecure_source && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+        timeout-minutes: 2
+
+      - uses: astral-sh/setup-uv@v5
+        timeout-minutes: 3
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'requirements/*.txt'
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: |
+          uv venv --python 3.12
+          uv pip install -r requirements/iasync.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Validate plan and secrets
+        timeout-minutes: 1
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
+        run: |
+          python -m egovorder.backfill --validate --partition "$PARTITION"
+          [[ -n "$IA_ACCESS_KEY" && -n "$IA_SECRET_KEY" ]] || { echo 'Set IA_ACCESS_KEY and IA_SECRET_KEY'; exit 1; }
+          [[ -n "$PROXY_IP_ADDRESS" ]] || { echo 'Set PROXY_IP_ADDRESS to the Andhra proxy host'; exit 1; }
+
+      - name: Restore unfinished uploads and progress
+        id: restore
+        timeout-minutes: 3
+        uses: actions/cache/restore@v4
+        with:
+          path: data/backfill/${{ matrix.range }}/
+          key: egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-
+
+      - name: Backfill selected date range
+        timeout-minutes: 212
+        env:
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
+          PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
+        run: |
+          args=(--upload --partition "$PARTITION")
+          if [[ "$TESTING_MODE" == true ]]; then args+=(--testing); fi
+          if [[ "$RETRY_UNAVAILABLE" == true ]]; then args+=(--retry-unavailable); fi
+          if [[ "$INSECURE_SOURCE" == true ]]; then args+=(--insecure-source); fi
+          python -m egovorder.backfill "${args[@]}"
+
+      - name: Save unfinished uploads and progress
+        if: always() && steps.restore.outcome == 'success'
+        timeout-minutes: 4
+        uses: actions/cache/save@v4
+        with:
+          path: data/backfill/${{ matrix.range }}/
+          key: egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save progress report and recovery files
+        if: always() && steps.restore.outcome == 'success'
+        timeout-minutes: 4
+        uses: actions/upload-artifact@v4
+        with:
+          name: andhra-backfill-${{ matrix.range }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: data/backfill/${{ matrix.range }}/
+          if-no-files-found: ignore
+          retention-days: 90

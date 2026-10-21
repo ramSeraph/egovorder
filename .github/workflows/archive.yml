@@ -29,10 +29,6 @@ on:
         description: Download time budget per source, in minutes (1–210)
         type: string
         default: '30'
-      testing:
-        description: Upload to the Internet Archive sandbox
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -48,5 +44,4 @@ jobs:
       to_date: ${{ inputs.to_date }}
       last_n_days: ${{ github.event_name == 'schedule' && '180' || inputs.last_n_days }}
       run_time_mins: ${{ inputs.run_time_mins || '30' }}
-      testing: ${{ inputs.testing || false }}
     secrets: inherit

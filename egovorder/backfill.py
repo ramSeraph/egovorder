@@ -15,8 +15,6 @@ import re
 import shutil
 import signal
 import time
-import warnings
-from urllib3.exceptions import InsecureRequestWarning
 from urllib.parse import urljoin
 import zipfile
 
@@ -24,8 +22,8 @@ from internetarchive import get_session, upload
 import pymupdf
 import requests
 
-from .backfill_portal import ANDHRA_ORIGIN, AndhraPortal, fingerprint, key, request, retryable
-from egovorder.srcs.datasrcs_info import TEST_PREFIX, get_identifier, srcinfos
+from .backfill_portal import AndhraPortal, fingerprint, key, request, retryable
+from egovorder.srcs.datasrcs_info import get_identifier, srcinfos
 from egovorder.utils.file_storage import FileManager
 from egovorder.utils.metainfo import MetaInfo
 
@@ -79,10 +77,8 @@ def document_format(data):
 
 
 class Backfill:
-    def __init__(self, root, *, insecure_source=False, testing=False, proxy=None):
+    def __init__(self, root, *, proxy=None):
         self.root = Path(root).resolve()
-        self.insecure_source = insecure_source
-        self.testing = testing
         self.proxy = proxy
         self.root.mkdir(parents=True, exist_ok=True)
         check_space(self.root)
@@ -128,7 +124,7 @@ class Backfill:
             "pid": os.getpid(), "status": status, "started_at": self.started_at,
             "updated_at": now(), "current_day": self.current_day,
             "time_limit_minutes": getattr(self, "time_limit_minutes", None),
-            "verify_source_tls": not self.insecure_source, "sandbox": self.testing,
+            "source_tls_policy": "ignore_expired_goir_certificates",
             "completed_days": len(completed), "outcomes": {k: v for k, v in self.counts.items() if v},
             "free_gib": round(shutil.disk_usage(self.root).free / 2**30, 2),
         }
@@ -206,8 +202,6 @@ class Backfill:
             return previous
         check_space(self.root)
         identifier = row.get("identifier")
-        if identifier and self.testing:
-            identifier = TEST_PREFIX + identifier
         if not identifier or not row.get("href"):
             return self.save(row, "no_download_link", source_row=row)
         remote = self.remote_item(identifier)
@@ -237,7 +231,7 @@ class Backfill:
         info.set_date(date.fromisoformat(row["date"]))
         info.set_url(response.url)
         relurl = f"{SOURCE}/{row['date']}/{kind}-{gid}"
-        if get_identifier(relurl, info, self.testing) != identifier:
+        if get_identifier(relurl, info, False) != identifier:
             raise RuntimeError("Identifier mismatch")
         rawfile = Path(self.storage.rawdir) / f"{relurl}.{extension}"
         rawfile.parent.mkdir(parents=True, exist_ok=True)
@@ -251,7 +245,7 @@ class Backfill:
         ]
         pending = self.save(
             row, "downloaded", identifier=identifier, files=files,
-            metadata=info.get_ia_metadata(srcinfos[SOURCE], self.testing),
+            metadata=info.get_ia_metadata(srcinfos[SOURCE], False),
         )
         return self.finish_upload(row, pending)
 
@@ -272,7 +266,7 @@ class Backfill:
                 active[candidate_key] = candidate
         if active:
             print(f"DAY {day}: querying {len(active)} audited candidates", flush=True)
-            portal = portal or AndhraPortal(date.fromisoformat(day), insecure_source=self.insecure_source, proxy=self.proxy)
+            portal = portal or AndhraPortal(date.fromisoformat(day), proxy=self.proxy)
             try:
                 matched = defaultdict(list)
                 for row in portal.listed_rows():
@@ -370,7 +364,6 @@ def catch_up_latest(runner, retry_unavailable=False, today=None):
         start = date.fromisoformat(state["start_date"])
         cursor = date.fromisoformat(state["next_date"])
     else:
-        # Always seed from production, including sandbox tests of this same job.
         start = cursor = latest_ia_date(runner.public)
     if start < AUDIT_END or cursor < start or start > today or cursor > today + timedelta(days=1):
         raise ValueError("Invalid latest-date checkpoint; catch-up must not overlap the historical audit")
@@ -383,7 +376,7 @@ def catch_up_latest(runner, retry_unavailable=False, today=None):
             candidates = {key(row): row for row in json.loads(path.read_text())}
             runner.day(day, candidates, retry_unavailable)
         else:
-            portal = AndhraPortal(date.fromisoformat(day), insecure_source=runner.insecure_source, proxy=runner.proxy)
+            portal = AndhraPortal(date.fromisoformat(day), proxy=runner.proxy)
             try:
                 rows = portal.listed_rows()
                 candidates = {key(row): row for row in rows}
@@ -430,7 +423,7 @@ def write_report(runner, grouped, status):
     atomic_json(runner.root / "progress.json", progress)
     summary = [
         "### Andhra backfill", "",
-        f"Status: **{status}**. Destination: {'sandbox' if runner.testing else 'production'}.", "",
+        f"Status: **{status}**.", "",
         f"Selected {sum(counts.values()):,} candidates across {len(grouped):,} dates "
         f"({min(grouped, default='not listed yet')} through {max(grouped, default='not listed yet')}).", "",
         "| Outcome | Orders |", "| --- | ---: |",
@@ -468,10 +461,7 @@ def main(argv=None):
     parser.add_argument("--to-date", type=parse_date, default=os.environ.get("TO_DATE", ""))
     parser.add_argument("--minutes", type=int, default=os.environ.get("RUN_TIME_MINS") or None,
                         help="Total work budget; local runs have no limit by default")
-    parser.add_argument("--testing", action="store_true", help="Use Internet Archive sandbox and separate progress")
     parser.add_argument("--retry-unavailable", action="store_true")
-    parser.add_argument("--insecure-source", action="store_true",
-                        help="Ignore certificate errors only for https://goir.ap.gov.in/")
     args = parser.parse_args(argv)
     if args.minutes is not None and args.minutes < 1:
         parser.error("--minutes must be positive")
@@ -491,7 +481,7 @@ def main(argv=None):
         print(f"Plan: {sum(map(len, grouped.values()))} candidates across {len(grouped)} dates", flush=True)
     if not args.upload:
         return 0
-    root = args.state_dir / args.partition / ("sandbox" if args.testing else "production")
+    root = args.state_dir / args.partition / "production"
     root.mkdir(parents=True, exist_ok=True)
     with (root / "run.lock").open("w") as lock:
         try:
@@ -507,11 +497,7 @@ def main(argv=None):
         proxy_host = os.environ.get("PROXY_IP_ADDRESS", "")
         proxy_auth = os.environ.get("PROXY_AUTH", "")
         proxy = f"http://{proxy_auth + '@' if proxy_auth else ''}{proxy_host}:8080" if proxy_host else None
-        if args.insecure_source:
-            print(f"Certificate verification disabled for {ANDHRA_ORIGIN}", flush=True)
-            warnings.filterwarnings("ignore", category=InsecureRequestWarning,
-                                    message=r"Unverified HTTPS request is being made to host 'goir\.ap\.gov\.in'\.")
-        runner = Backfill(root, insecure_source=args.insecure_source, testing=args.testing, proxy=proxy)
+        runner = Backfill(root, proxy=proxy)
         runner.time_limit_minutes = args.minutes
         prior_alarm = signal.signal(signal.SIGALRM, deadline)
         prior_term = signal.signal(signal.SIGTERM, interrupted)

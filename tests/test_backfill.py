@@ -41,8 +41,6 @@ class BackfillTests(unittest.TestCase):
         self.root = Path(temp.name).resolve()
         self.runner = job.Backfill.__new__(job.Backfill)
         self.runner.root = self.root
-        self.runner.insecure_source = False
-        self.runner.testing = False
         self.runner.proxy = None
         self.runner.counts = Counter()
         self.runner.storage = job.FileManager(str(self.root / "data"), False, False)
@@ -70,35 +68,8 @@ class BackfillTests(unittest.TestCase):
     def test_source_tls_verification_is_enabled_by_default(self):
         portal = AndhraPortal(job.date(2008, 7, 8))
         with patch.object(requests.adapters.HTTPAdapter, "send", return_value=requests.Response()) as send:
-            portal.session.get(job.ANDHRA_ORIGIN)
+            portal.session.get(portal.url)
         self.assertTrue(send.call_args.kwargs["verify"])
-
-    def test_certificate_bypass_does_not_follow_redirects_to_other_hosts(self):
-        portal = AndhraPortal(job.date(2008, 7, 8), insecure_source=True)
-        sent = []
-
-        def send(adapter, request, **kwargs):
-            sent.append((request.url, kwargs["verify"]))
-            response = requests.Response()
-            response.request = request
-            response.url = request.url
-            response._content = b""
-            response.status_code = 200
-            if request.url == job.ANDHRA_ORIGIN:
-                response.status_code = 302
-                response.headers["Location"] = "https://archive.org/"
-            return response
-
-        with patch.object(requests.adapters.HTTPAdapter, "send", autospec=True, side_effect=send):
-            portal.session.get(job.ANDHRA_ORIGIN)
-            portal.session.get("https://goir.ap.gov.in.example.org/")
-            portal.session.get("https://s3.us.archive.org/")
-        self.assertEqual(sent, [
-            (job.ANDHRA_ORIGIN, False),
-            ("https://archive.org/", True),
-            ("https://goir.ap.gov.in.example.org/", True),
-            ("https://s3.us.archive.org/", True),
-        ])
 
     def test_success_records_receipt_and_removes_only_uploaded_files(self):
         result = self.runner.process(row(), self.portal)
@@ -224,12 +195,6 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(self.runner.process(row(), self.portal)["status"], "uploaded")
         self.upload.assert_called_once()
 
-    def test_sandbox_uses_separate_identifiers_and_collection(self):
-        self.runner.testing = True
-        result = self.runner.process(row(), self.portal)
-        self.assertEqual(result["identifier"], "egaztest." + row()["identifier"])
-        self.assertEqual(self.upload.call_args.kwargs["metadata"]["collection"], "test_collection")
-
     def test_completed_receipt_survives_a_later_missing_source_row(self):
         self.runner.process(row(), self.portal)
         with patch.object(job, "AndhraPortal") as portal:
@@ -285,7 +250,7 @@ class PlanTests(unittest.TestCase):
             combined.update(keys)
         self.assertEqual(len(combined), 12320)
 
-    def test_partition_and_destination_have_separate_state_directories(self):
+    def test_partitions_have_separate_state_directories(self):
         with tempfile.TemporaryDirectory() as temp, \
              patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}), \
              patch.object(job, "Backfill") as runner, patch.object(job, "run_plan"), \
@@ -293,9 +258,8 @@ class PlanTests(unittest.TestCase):
             base = ["--upload", "--state-dir", temp]
             job.main([*base, "--partition", "2018-10"])
             job.main([*base, "--partition", "2018-11"])
-            job.main([*base, "--partition", "2018-10", "--testing"])
         self.assertEqual([call.args[0].relative_to(temp).as_posix() for call in runner.call_args_list],
-                         ["2018-10/production", "2018-11/production", "2018-10/sandbox"])
+                         ["2018-10/production", "2018-11/production"])
 
     def test_validation_has_no_network_or_state_writes(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -345,7 +309,7 @@ class LatestCatchupTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name).resolve()
-        self.runner = SimpleNamespace(root=self.root, public=object(), insecure_source=False, proxy=None, day=Mock())
+        self.runner = SimpleNamespace(root=self.root, public=object(), proxy=None, day=Mock())
         def portal(day, **kwargs):
             result = Mock()
             result.listed_rows.return_value = [dict(row(), date=day.isoformat())]

@@ -36,7 +36,7 @@ Use `telangana_goir` for Telangana. Both commands support `--help`.
 
 - [Daily archive](https://github.com/ramSeraph/egovorder/actions/workflows/archive.yml)
 - [Historical catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml)
-- [Andhra backfill ranges](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml)
+- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml)
 - [Monthly keep-alive](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml)
 - [Offline tests](https://github.com/ramSeraph/egovorder/actions/workflows/tests.yml)
 

@@ -24,9 +24,6 @@ on:
       run_time_mins:
         type: string
         default: '30'
-      testing:
-        type: boolean
-        default: false
     secrets:
       IA_ACCESS_KEY:
         required: true
@@ -55,7 +52,7 @@ jobs:
       matrix:
         source: ${{ fromJSON(inputs.source == 'andhra_goir' && '["andhra_goir"]' || inputs.source == 'telangana_goir' && '["telangana_goir"]' || '["andhra_goir","telangana_goir"]') }}
     concurrency:
-      group: goir-${{ matrix.source }}-${{ inputs.testing || false }}
+      group: goir-${{ matrix.source }}-false
       cancel-in-progress: false
     env:
       SOURCE: ${{ matrix.source }}
@@ -65,7 +62,7 @@ jobs:
       TO_DATE: ${{ inputs.to_date }}
       LAST_N_DAYS: ${{ inputs.last_n_days }}
       RUN_TIME_MINS: ${{ inputs.run_time_mins }}
-      TESTING_MODE: ${{ inputs.testing && 'true' || 'false' }}
+      TESTING_MODE: 'false'
     steps:
       - uses: actions/checkout@v4.1.7
         timeout-minutes: 2

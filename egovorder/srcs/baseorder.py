@@ -11,6 +11,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 from ..utils import utils
+from ..utils.tls import GoirHTTPSHandler, configure_goir_tls
 
 from .datasrcs_info import get_start_date
 
@@ -47,6 +48,7 @@ class Downloader:
         self.request_timeout_secs = 400
         self.retriable_status_codes = [503, 504, 403, 429]
         self.strict_downloads = os.environ.get('EGOVORDER_STRICT_DOWNLOADS') == '1'
+        self._url_opener = None
 
 
         self.logger      = logging.getLogger('crawler.%s' % self.name)
@@ -102,7 +104,7 @@ class Downloader:
         retry = self.get_session_retry()
         s.mount('http://', HTTPAdapter(max_retries=retry))
         s.mount('https://', HTTPAdapter(max_retries=retry))
-        return s
+        return configure_goir_tls(s)
 
 
     def download_url_using_session(self, url, session = None, postdata = None, \
@@ -200,7 +202,13 @@ class Downloader:
         self.logger.debug('Request url: %s headers: %s data: %s', \
                             request.full_url, request.headers, request.data)
         try:
-            opener  = urllib.request.urlopen(request, timeout = self.request_timeout_secs)
+            if self._url_opener is None:
+                handlers = [GoirHTTPSHandler()]
+                proxydict = utils.get_proxydict(self.hostname)
+                if proxydict is not None:
+                    handlers.append(urllib.request.ProxyHandler(proxydict))
+                self._url_opener = urllib.request.build_opener(*handlers)
+            opener = self._url_opener.open(request, timeout=self.request_timeout_secs)
             response = opener.info()
             webpage  = opener.read()
 

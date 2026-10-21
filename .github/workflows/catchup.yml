@@ -20,10 +20,6 @@ on:
         description: Total catch-up work budget in minutes (1–210); job limit is 4 hours
         type: string
         default: '210'
-      testing:
-        description: Upload to the Internet Archive sandbox
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -38,5 +34,4 @@ jobs:
       from_date: ${{ inputs.from_date }}
       to_date: ${{ inputs.to_date }}
       run_time_mins: ${{ inputs.run_time_mins }}
-      testing: ${{ inputs.testing }}
     secrets: inherit

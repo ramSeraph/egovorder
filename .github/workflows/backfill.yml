@@ -1,53 +1,30 @@
-name: Backfill Andhra date ranges
+name: Backfill Andhra orders
 
 on:
+  schedule:
+    - cron: '0 5,11,17,23 * * *' # Every six hours; 04:30, 10:30, 16:30, 22:30 IST.
   workflow_dispatch:
-    inputs:
-      range:
-        description: Date range; all launches independent historical and latest-date jobs
-        type: choice
-        options: [all, '2008-07', '2017-10', '2018-09', '2018-10', '2018-11', '2018-12', other, latest]
-        default: all
-      run_time_mins:
-        description: Total work budget (1–210 minutes); job limit is 4 hours
-        type: string
-        default: '210'
-      retry_unavailable:
-        description: Recheck previously unavailable documents and missing source rows
-        type: boolean
-        default: false
-      insecure_source:
-        description: Ignore the expired certificate only for goir.ap.gov.in
-        type: boolean
-        default: true
-      testing:
-        description: Upload to the Internet Archive sandbox
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 jobs:
   backfill:
-    name: Andhra — ${{ matrix.range }}
+    name: ${{ matrix.partition == 'all' && 'Historical gaps' || 'Catch up to today' }}
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        range: ${{ fromJSON(inputs.range == 'all' && '["2008-07","2017-10","2018-09","2018-10","2018-11","2018-12","other","latest"]' || format('["{0}"]', inputs.range)) }}
+        partition: [all, latest]
     concurrency:
-      # Historical ranges are independent. Latest catch-up overlaps daily scraping.
-      group: ${{ matrix.range == 'latest' && format('goir-andhra_goir-{0}', inputs.testing || false) || format('goir-audited-andhra-{0}-{1}', matrix.range, inputs.testing || false) }}
+      # Historical work is independent. Latest catch-up overlaps daily scraping.
+      group: ${{ matrix.partition == 'latest' && 'goir-andhra_goir-false' || 'goir-audited-andhra-all-false' }}
       cancel-in-progress: false
     env:
-      PARTITION: ${{ matrix.range }}
-      RUN_TIME_MINS: ${{ inputs.run_time_mins }}
-      TESTING_MODE: ${{ inputs.testing && 'true' || 'false' }}
-      RETRY_UNAVAILABLE: ${{ inputs.retry_unavailable && 'true' || 'false' }}
-      INSECURE_SOURCE: ${{ inputs.insecure_source && 'true' || 'false' }}
+      PARTITION: ${{ matrix.partition }}
+      RUN_TIME_MINS: '210'
     steps:
       - uses: actions/checkout@v4.1.7
         timeout-minutes: 2
@@ -81,39 +58,34 @@ jobs:
         timeout-minutes: 3
         uses: actions/cache/restore@v4
         with:
-          path: data/backfill/${{ matrix.range }}/
-          key: egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: data/backfill/${{ matrix.partition }}/
+          key: egovorder-backfill-v1-${{ matrix.partition }}-${{ matrix.partition == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-false-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-
+            egovorder-backfill-v1-${{ matrix.partition }}-${{ matrix.partition == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-false-
 
-      - name: Backfill selected date range
+      - name: Download and upload orders
         timeout-minutes: 212
         env:
           IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
           IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
           PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
           PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
-        run: |
-          args=(--upload --partition "$PARTITION")
-          if [[ "$TESTING_MODE" == true ]]; then args+=(--testing); fi
-          if [[ "$RETRY_UNAVAILABLE" == true ]]; then args+=(--retry-unavailable); fi
-          if [[ "$INSECURE_SOURCE" == true ]]; then args+=(--insecure-source); fi
-          python -m egovorder.backfill "${args[@]}"
+        run: python -m egovorder.backfill --upload --partition "$PARTITION"
 
       - name: Save unfinished uploads and progress
         if: always() && steps.restore.outcome == 'success'
         timeout-minutes: 4
         uses: actions/cache/save@v4
         with:
-          path: data/backfill/${{ matrix.range }}/
-          key: egovorder-backfill-v1-${{ matrix.range }}-${{ matrix.range == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: data/backfill/${{ matrix.partition }}/
+          key: egovorder-backfill-v1-${{ matrix.partition }}-${{ matrix.partition == 'latest' && 'latest' || hashFiles('plans/andhra-2026-10.csv') }}-false-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save progress report and recovery files
         if: always() && steps.restore.outcome == 'success'
         timeout-minutes: 4
         uses: actions/upload-artifact@v4
         with:
-          name: andhra-backfill-${{ matrix.range }}-${{ env.TESTING_MODE }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: data/backfill/${{ matrix.range }}/
+          name: andhra-backfill-${{ matrix.partition }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: data/backfill/${{ matrix.partition }}/
           if-no-files-found: ignore
           retention-days: 90

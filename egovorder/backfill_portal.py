@@ -11,6 +11,7 @@ import requests
 
 from .srcs.andhra import AndhraGOIR
 from .srcs.datasrcs_info import get_identifier
+from .utils.tls import configure_goir_tls
 
 SOURCE = "andhra_goir"
 ANDHRA_ORIGIN = "https://goir.ap.gov.in/"
@@ -53,22 +54,12 @@ def request(session, method, url, *, missing_ok=False, **kwargs):
             time.sleep(2 + attempt * 2)
 
 
-class AndhraSourceAdapter(requests.adapters.HTTPAdapter):
-    """Opt-in certificate bypass, mounted only on Andhra's source origin."""
-
-    def send(self, request, **kwargs):
-        kwargs["verify"] = False
-        return super().send(request, **kwargs)
-
-
 class AndhraPortal:
-    def __init__(self, day, *, insecure_source=False, proxy=None):
+    def __init__(self, day, *, proxy=None):
         self.day = day
         self.scraper = AndhraGOIR(SOURCE, None)
         self.url = self.scraper.baseurl
-        self.session = requests.Session()
-        if insecure_source:
-            self.session.mount(ANDHRA_ORIGIN, AndhraSourceAdapter())
+        self.session = configure_goir_tls(requests.Session())
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
             self.session.trust_env = False

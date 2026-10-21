@@ -11,6 +11,7 @@ from egovorder import backfill as job
 from egovorder.backfill_portal import AndhraPortal
 from collections import Counter
 import csv
+import hashlib
 import json
 import shutil
 import os
@@ -47,6 +48,7 @@ class BackfillTests(unittest.TestCase):
         self.runner.access = "fake-access"
         self.runner.secret = "fake-secret"
         self.runner.ia_session = object()
+        self.runner.public = Mock()
         self.runner.current_day = "2018-12-19"
         self.runner.started_at = job.now()
         self.runner.remote_item = Mock(return_value={})
@@ -189,6 +191,67 @@ class BackfillTests(unittest.TestCase):
             self.runner.process(row(), self.portal)
         self.upload.assert_not_called()
         self.assertTrue(all(self.runner.file_path(f).is_file() for f in pending["files"]))
+
+    def pending_with_archived_xml(self, transform):
+        self.upload.side_effect = requests.HTTPError("upload failed")
+        with self.assertRaises(requests.HTTPError):
+            self.runner.process(row(), self.portal)
+        pending = self.runner.outcome(row())
+        xml = pending["files"][1]
+        archived = transform(self.runner.file_path(xml).read_bytes())
+        archived_file = {"name": xml["name"], "size": str(len(archived)),
+                         "md5": hashlib.md5(archived).hexdigest()}
+        self.runner.remote_item.return_value = {
+            "metadata": {"identifier": row()["identifier"]}, "files": [archived_file],
+        }
+        self.runner.public.request.return_value = SimpleNamespace(
+            status_code=200, content=archived, raise_for_status=Mock(),
+        )
+        self.upload.reset_mock(side_effect=True)
+        self.upload.return_value = [Mock()]
+        self.portal.session.request.reset_mock()
+        return pending, archived_file
+
+    def test_resume_preserves_equivalent_archived_xml_and_uploads_only_pdf(self):
+        pending, archived = self.pending_with_archived_xml(
+            lambda data: data.replace(b"GAD01 - GENERAL", b"GAD01\n- GENERAL")
+        )
+        # Legacy unknown files are not sufficient evidence of a usable document.
+        self.runner.remote_item.return_value["files"].append(
+            {"name": "E-42.unkwn", "md5": "old-unknown-document", "size": "80"}
+        )
+        result = self.runner.process(row(), self.portal)
+        self.assertEqual(result["status"], "uploaded")
+        self.portal.session.request.assert_not_called()
+        self.assertEqual(self.upload.call_args.args[1], [str(self.runner.file_path(pending["files"][0]))])
+        self.assertIsNone(self.upload.call_args.kwargs["metadata"])
+        self.assertEqual(result["files"][1]["md5"], archived["md5"])
+        self.assertEqual(result["files"][1]["bytes"], int(archived["size"]))
+        self.assertTrue(result["files"][1]["preserved_existing"])
+        self.assertTrue(all(not self.runner.file_path(f).exists() for f in pending["files"]))
+
+    def test_real_metadata_change_retains_pending_files_and_stops(self):
+        pending, _ = self.pending_with_archived_xml(
+            lambda data: data.replace(b"<gonum>42</gonum>", b"<gonum>43</gonum>")
+        )
+        with self.assertRaisesRegex(RuntimeError, "Existing IA file differs"):
+            self.runner.process(row(), self.portal)
+        self.upload.assert_not_called()
+        self.assertEqual(self.runner.outcome(row())["status"], "downloaded")
+        self.assertTrue(all(self.runner.file_path(f).is_file() for f in pending["files"]))
+
+    def test_archived_xml_download_must_match_ia_checksum(self):
+        pending, archived = self.pending_with_archived_xml(
+            lambda data: data.replace(b"GAD01 - GENERAL", b"GAD01\n- GENERAL")
+        )
+        archived["md5"] = "different-remote-content"
+        with self.assertRaisesRegex(RuntimeError, "Existing IA file differs"):
+            self.runner.process(row(), self.portal)
+        self.upload.assert_not_called()
+        self.assertTrue(all(self.runner.file_path(f).is_file() for f in pending["files"]))
+
+    def test_malformed_metadata_is_not_equivalent(self):
+        self.assertFalse(job.same_xml_content(b"<document>broken", b"<document>broken"))
 
     def test_metadata_only_item_is_not_treated_as_complete(self):
         self.runner.remote_item.return_value = {"metadata": {"identifier": row()["identifier"]}}

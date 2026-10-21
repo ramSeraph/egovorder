@@ -16,6 +16,7 @@ import shutil
 import signal
 import time
 from urllib.parse import urljoin
+from xml.etree import ElementTree
 import zipfile
 
 from internetarchive import get_session, upload
@@ -74,6 +75,22 @@ def document_format(data):
         if get_buffer_type(data) == "application/msword":
             return "doc"
     return None
+
+
+def same_xml_content(first, second):
+    """Ignore formatting whitespace in old scraper metadata, retaining real changes."""
+    normalized = []
+    for data in (first, second):
+        try:
+            root = ElementTree.fromstring(data)
+        except ElementTree.ParseError:
+            return False
+        for node in root.iter():
+            node.text = " ".join((node.text or "").split())
+            node.tail = " ".join((node.tail or "").split())
+            node.attrib = dict(sorted(node.attrib.items()))
+        normalized.append(ElementTree.tostring(root))
+    return normalized[0] == normalized[1]
 
 
 class Backfill:
@@ -160,6 +177,7 @@ class Backfill:
         remote = self.remote_item(identifier)
         existing = {f["name"]: f for f in remote.get("files", [])}
         needed = []
+        receipt_files = []
         for file in files:
             path = self.file_path(file)
             if path.is_file() and hashlib.md5(path.read_bytes()).hexdigest() != file["md5"]:
@@ -167,11 +185,24 @@ class Backfill:
             archived = existing.get(file["name"])
             if archived:
                 if archived.get("md5") != file["md5"]:
-                    raise RuntimeError(f"Existing IA file differs: {identifier}/{file['name']}")
+                    # Earlier scrapers retained line breaks inside table cells.
+                    # Keep equivalent archived XML without replacing it. Documents
+                    # and substantive metadata changes still require exact checks.
+                    metadata_name = identifier.rsplit(".", 1)[-1] + ".xml"
+                    if file["name"] != metadata_name or not path.is_file():
+                        raise RuntimeError(f"Existing IA file differs: {identifier}/{file['name']}")
+                    response = request(self.public, "GET", f"https://archive.org/download/{identifier}/{file['name']}")
+                    if (hashlib.md5(response.content).hexdigest() != archived.get("md5")
+                            or not same_xml_content(path.read_bytes(), response.content)):
+                        raise RuntimeError(f"Existing IA file differs: {identifier}/{file['name']}")
+                    file = {**file, "md5": archived["md5"], "bytes": len(response.content),
+                            "preserved_existing": True}
+                    print(f"KEEP {identifier}/{file['name']}: equivalent metadata formatting", flush=True)
             elif not path.is_file():
                 raise RuntimeError(f"Pending upload file missing: {path}")
             else:
                 needed.append(str(path))
+            receipt_files.append(file)
         if needed:
             print(f"UPLOAD {identifier} ({sum(Path(p).stat().st_size for p in needed)} bytes)", flush=True)
             responses = upload(
@@ -183,7 +214,7 @@ class Backfill:
                 raise RuntimeError(f"Incomplete upload response for {identifier}")
             for response in responses:
                 response.raise_for_status()
-        result = self.save(row, "uploaded", identifier=identifier, files=files,
+        result = self.save(row, "uploaded", identifier=identifier, files=receipt_files,
                            metadata=pending["metadata"], uploaded_at=now())
         # Each request was accepted with Content-MD5. Public IA ingestion can lag.
         for file in files:

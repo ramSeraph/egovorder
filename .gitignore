@@ -17,3 +17,4 @@ storage.json
 from_date.txt
 donelist.txt
 .DS_Store
+/docs/

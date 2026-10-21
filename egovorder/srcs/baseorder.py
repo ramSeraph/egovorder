@@ -46,7 +46,7 @@ class Downloader:
         self.retry_delay_base_secs = 100
         self.retry_delay_max_secs = 300
         self.request_timeout_secs = 400
-        self.retriable_status_codes = [503, 504, 403, 429]
+        self.retriable_status_codes = [500, 502, 503, 504, 403, 429]
         self.strict_downloads = os.environ.get('EGOVORDER_STRICT_DOWNLOADS') == '1'
         self._url_opener = None
 

@@ -247,6 +247,12 @@ class TelanganaGOIR(BaseOrder):
                 gotype = metainfo['gotype'].lower()
                 docid  = f'{dept}-{gotype}-{gonum}'
                 relurl = os.path.join(relpath, docid)
+                # The portal reserves numbers for unissued orders and still
+                # shows a download link, which returns the search page as HTML.
+                if re.fullmatch(r'\s*not\s+issued\s*\.?\s*',
+                                metainfo.get('abstract') or '', re.I):
+                    self.logger.info('Skipping order marked Not Issued: %s', relurl)
+                    continue
                 if self.save_order(relurl, searchurl, metainfo, postdata=newpost, \
                                      referer = searchurl, cookiefile = cookiejar, validurl=False):
                     dls.append(relurl)

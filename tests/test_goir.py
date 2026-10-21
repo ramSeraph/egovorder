@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from egovorder import sync
 from egovorder.srcs import datasrcs, datasrcs_info
@@ -200,6 +201,58 @@ class SourceTests(unittest.TestCase):
         self.assertTrue(scraper.is_valid_order(PDF, 0))
         self.assertFalse(scraper.is_valid_order(b"<!doctype html><html>Error</html>", 0))
         self.assertFalse(scraper.is_valid_order(PDF, len(PDF) + 1))
+
+    def test_telangana_not_issued_placeholder_does_not_block_following_pages(self):
+        for abstract in ("Not Issued", " not\n issued ", "NOT ISSUED."):
+            with self.subTest(abstract=abstract), tempfile.TemporaryDirectory() as temp:
+                storage = FileManager(temp, False, False)
+                scraper = TelanganaGOIR("telangana_goir", storage)
+                scraper.strict_downloads = True
+                fixture = (FIXTURES / "telangana_goir.html").read_text()
+                page_one = fixture.replace("Allocation &amp; expenditure", abstract)
+                page_two = fixture.replace("page-one-state", "page-two-state").replace("42", "43")
+                responses = [
+                    response(page_one, scraper.baseurl), response(page_one, scraper.baseurl),
+                    response(page_two, scraper.baseurl), response(PDF, scraper.baseurl),
+                ]
+                relpath = f"telangana_goir/{DATE}"
+                with patch.object(scraper, "download_url", side_effect=responses) as fetch:
+                    paths = scraper.download_oneday(relpath, DATE)
+                self.assertEqual(paths, [f"{relpath}/finance-manuscript-43"])
+                self.assertEqual(fetch.call_count, 4)
+                self.assertIsNone(storage.get_rawfile_path(f"{relpath}/finance-manuscript-42"))
+                self.assertIsNone(storage.get_metainfo(f"{relpath}/finance-manuscript-42"))
+                self.assertEqual(Path(storage.get_rawfile_path(paths[0])).read_bytes(), PDF)
+
+    def test_telangana_does_not_skip_subjects_that_mention_not_issued(self):
+        with tempfile.TemporaryDirectory() as temp:
+            storage = FileManager(temp, False, False)
+            scraper = TelanganaGOIR("telangana_goir", storage)
+            scraper.strict_downloads = True
+            fixture = (FIXTURES / "telangana_goir.html").read_bytes()
+            orders, _ = scraper.parse_search_results(fixture, DATE, 1)
+            orders[0]["abstract"] = "Certificates not issued to applicants - Instructions"
+            with patch.object(scraper, "download_url", return_value=response(PDF, scraper.baseurl)) as fetch:
+                paths = scraper.download_metainfos(
+                    f"telangana_goir/{DATE}", orders, scraper.baseurl,
+                    scraper.get_form_data(fixture, DATE), None,
+                )
+            fetch.assert_called_once()
+            self.assertEqual(paths, [f"telangana_goir/{DATE}/finance-manuscript-42"])
+
+    def test_source_http_500_and_502_retry_with_a_delay(self):
+        for code in (500, 502):
+            with self.subTest(code=code):
+                scraper = TelanganaGOIR("telangana_goir", None)
+                scraper.strict_downloads = True
+                failed = WebResponse()
+                failed.set_error(HTTPError(scraper.baseurl, code, "Server error", {}, None))
+                success = response(PDF, scraper.baseurl)
+                with patch.object(scraper, "download_url_onetime", side_effect=[failed, success]) as fetch:
+                    with patch("egovorder.srcs.baseorder.time.sleep") as sleep:
+                        self.assertIs(scraper.download_url(scraper.baseurl), success)
+                self.assertEqual(fetch.call_count, 2)
+                sleep.assert_called_once_with(scraper.retry_delay_base_secs)
 
     def test_archive_identifiers_and_sandbox_namespace_are_preserved(self):
         cases = {

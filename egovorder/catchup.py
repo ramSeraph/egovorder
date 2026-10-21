@@ -31,7 +31,7 @@ class BudgetExpired(Exception):
 @dataclass
 class Settings:
     source: str
-    start: date
+    start: date | None
     end: date
     minutes: int
     sandbox: bool
@@ -56,17 +56,17 @@ class Settings:
         if not 1 <= minutes <= 210:
             raise ValueError("RUN_TIME_MINS must be between 1 and 210")
         try:
-            start = (
-                datetime.strptime(env["FROM_DATE"], "%d-%m-%Y").date()
-                if env.get("FROM_DATE") else get_start_date(source).date()
-            )
+            if env.get("FROM_DATE"):
+                start = datetime.strptime(env["FROM_DATE"], "%d-%m-%Y").date()
+            else:
+                start = None if source == "uttarakhand_gos" else get_start_date(source).date()
             end = (
                 datetime.strptime(env["TO_DATE"], "%d-%m-%Y").date()
                 if env.get("TO_DATE") else datetime.now(timezone.utc).date()
             )
         except ValueError:
             raise ValueError("Dates must be valid and use DD-MM-YYYY") from None
-        if start > end:
+        if start is not None and start > end:
             raise ValueError("FROM_DATE must not be after TO_DATE")
         if end == date.max:
             raise ValueError("TO_DATE must be before 31-12-9999")
@@ -78,14 +78,17 @@ class Settings:
     @property
     def checkpoint(self):
         destination = "sandbox" if self.sandbox else "production"
-        return self.data / "catchup" / f"{self.source}-{destination}-{self.start.isoformat()}.json"
+        start = self.start.isoformat() if self.start is not None else 'latest'
+        return self.data / "catchup" / f"{self.source}-{destination}-{start}.json"
 
     def next_date(self):
         if not self.checkpoint.exists():
+            if self.start is None:
+                raise ValueError("Latest archived date has not been initialized")
             return self.start
         try:
             next_date = date.fromisoformat(json.loads(self.checkpoint.read_text())["next_date"])
-            if next_date < self.start:
+            if self.start is not None and next_date < self.start:
                 raise ValueError("checkpoint precedes requested start")
             return next_date
         except (KeyError, TypeError, ValueError) as exc:
@@ -140,7 +143,6 @@ def run_command(args, env, deadline):
 
 
 def catch_up(settings, runner=run_command, clock=time.monotonic):
-    day = settings.next_date()
     deadline = clock() + settings.minutes * 60
     env = dict(
         settings.env,
@@ -149,6 +151,21 @@ def catch_up(settings, runner=run_command, clock=time.monotonic):
         TESTING_MODE="true" if settings.sandbox else "false",
         EGOVORDER_STRICT_DOWNLOADS="1",
     )
+    if settings.start is None and not settings.checkpoint.exists():
+        # Seed once from IA, then retain a stable checkpoint even if another
+        # uploader later archives a newer date while this catch-up is unfinished.
+        latest_file = settings.checkpoint.with_suffix('.from-date')
+        latest_file.parent.mkdir(parents=True, exist_ok=True)
+        query_env = dict(env)
+        if settings.sandbox:
+            query_env['TESTING'] = '1'
+        else:
+            query_env.pop('TESTING', None)
+        runner(['bash', 'scripts/get_fromdate.sh', settings.source, str(latest_file)], query_env, deadline)
+        latest = datetime.strptime(latest_file.read_text().strip(), '%d-%m-%Y').date()
+        settings.save_progress(latest)
+        latest_file.unlink()
+    day = settings.next_date()
 
     # Recover cached uploads before contacting the portal. Do not advance the
     # checkpoint: the interrupted day may still have missing downloads.

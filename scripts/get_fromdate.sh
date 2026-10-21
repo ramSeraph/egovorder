@@ -13,9 +13,12 @@ latest="$(ia search "identifier:${prefix}*" --sort 'date desc' -f date --paramet
 export GOIR_LATEST_DATE="$latest"
 from_date="$(python - <<'PY'
 import os
+import sys
 from datetime import datetime
 from egovorder.srcs.datasrcs_info import get_start_date
 latest = os.environ["GOIR_LATEST_DATE"]
+if not latest and os.environ["GOIR_SOURCE"] == "uttarakhand_gos":
+    sys.exit("No archived Uttarakhand date found; refusing to start a historical backfill")
 date = datetime.fromisoformat(latest.replace("Z", "+00:00")) if latest else get_start_date(os.environ["GOIR_SOURCE"])
 print(date.strftime("%d-%m-%Y"))
 PY

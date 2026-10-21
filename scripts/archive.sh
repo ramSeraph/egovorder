@@ -20,6 +20,9 @@ esac
 from_date="${FROM_DATE:-}"
 to_date="${TO_DATE:-$(date -u +'%d-%m-%Y')}"
 last_n_days="${LAST_N_DAYS-180}"
+if [[ "$SOURCE" == 'uttarakhand_gos' ]]; then
+  last_n_days="${LAST_N_DAYS-}"
+fi
 run_time_mins="${RUN_TIME_MINS:-30}"
 testing="${TESTING_MODE:-false}"
 data_dir="${DATA_DIR:-data}"

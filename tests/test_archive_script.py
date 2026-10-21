@@ -57,7 +57,8 @@ if "-i" in sys.argv:
         }[os.environ["SOURCE"]]
         print(f"{prefix}{source_prefix}2025-06-01.known-order")
 else:
-    print('{"date": "2025-06-01T00:00:00Z"}')
+    latest = os.environ.get("FAKE_IA_LATEST_DATE", "2025-06-01T00:00:00Z")
+    print(json.dumps({"date": latest} if latest else {}))
 """
 
 
@@ -107,7 +108,7 @@ class ArchiveScriptTests(unittest.TestCase):
         return [call for call in calls if command is None or call["command"] == command]
 
     def test_defaults_match_existing_scheduled_runs(self):
-        for source in ("andhra_goir", "telangana_goir", "uttarakhand_gos"):
+        for source in ("andhra_goir", "telangana_goir"):
             with self.subTest(source=source):
                 self.env["SOURCE"] = source
                 self.run_archive()
@@ -117,8 +118,7 @@ class ArchiveScriptTests(unittest.TestCase):
                 self.assertEqual(args[args.index("-t") + 1], "01-01-2025")
                 self.assertEqual(args[args.index("-T") + 1], "30-06-2025")
                 self.assertEqual(args[args.index("-W") + 1], "1800")
-                prefix = "in.gov.uttarakhand.go." if source == "uttarakhand_gos" else f"in.gov.{source.removesuffix('_goir')}.goir."
-                self.assertIn(prefix, download["done"])
+                self.assertIn(f"in.gov.{source.removesuffix('_goir')}.goir.", download["done"])
                 self.assertEqual(self.calls()[-1]["command"], "iasync.py")
 
     def test_proxy_is_used_only_for_portal_downloads(self):
@@ -141,6 +141,13 @@ class ArchiveScriptTests(unittest.TestCase):
         args = self.calls("sync.py")[0]["args"]
         self.assertEqual(args[args.index("-t") + 1], "01-06-2025")
         self.assertNotIn("-L", args)
+
+    def test_uttarakhand_defaults_to_latest_archived_day(self):
+        self.env['SOURCE'] = 'uttarakhand_gos'
+        self.run_archive()
+        args = self.calls('sync.py')[0]['args']
+        self.assertEqual(args[args.index('-t') + 1], '01-06-2025')
+        self.assertIn('identifier:in.gov.uttarakhand.go.', self.calls('ia')[0]['args'][1])
 
     def test_sandbox_queries_and_uploads_stay_in_sandbox(self):
         self.env["TESTING_MODE"] = "true"

@@ -125,21 +125,56 @@ class CatchupTests(unittest.TestCase):
 
     def test_defaults_use_historical_start_and_210_minutes(self):
         for source, expected in (("andhra_goir", date(2008, 6, 1)), ("telangana_goir", date(2014, 6, 2)),
-                                 ("uttarakhand_gos", date(1999, 5, 13))):
+                                 ("uttarakhand_gos", None)):
             with self.subTest(source=source):
                 env = dict(self.env, SOURCE=source, FROM_DATE="", RUN_TIME_MINS="")
                 settings = Settings.from_env(env)
                 self.assertEqual(settings.start, expected)
                 self.assertEqual(settings.minutes, 210)
 
-    def test_uttarakhand_catchup_uploads_and_checkpoints_each_day(self):
-        self.env["SOURCE"] = "uttarakhand_gos"
+    def test_uttarakhand_catchup_seeds_once_from_ia_then_uses_saved_progress(self):
+        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='')
         self.run_catchup()
         self.assertEqual(len(self.calls("sync.py")), 2)
         self.assertEqual(len(self.calls("iasync.py")), 2)
-        self.assertEqual(Settings.from_env(self.env).next_date(), date(2025, 6, 3))
+        settings = Settings.from_env(self.env)
+        self.assertEqual(settings.next_date(), date(2025, 6, 3))
+        self.assertTrue(settings.checkpoint.name.endswith('-latest.json'))
         for call in self.calls("sync.py"):
             self.assertIn("in.gov.uttarakhand.go.", call["done"])
+        seed_queries = [call for call in self.calls('ia') if '-i' not in call['args']]
+        self.assertEqual(len(seed_queries), 1)
+        self.log.write_text('')
+        self.env.update(TO_DATE='03-06-2025', FAKE_IA_LATEST_DATE='2026-10-01T00:00:00Z')
+        self.run_catchup()
+        self.assertEqual(settings.next_date(), date(2025, 6, 4))
+        self.assertEqual(len(self.calls('sync.py')), 1)
+        self.assertEqual([call for call in self.calls('ia') if '-i' not in call['args']], [])
+
+    def test_uttarakhand_empty_archive_cannot_start_a_backfill(self):
+        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='', FAKE_IA_LATEST_DATE='')
+        self.run_catchup(success=False)
+        self.assertEqual(self.calls('sync.py'), [])
+        self.assertFalse(Settings.from_env(self.env).checkpoint.exists())
+
+    def test_uttarakhand_failed_day_is_retained_despite_newer_archive_items(self):
+        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='', FAIL_DATE='01-06-2025')
+        self.run_catchup(success=False)
+        settings = Settings.from_env(self.env)
+        self.assertEqual(settings.next_date(), date(2025, 6, 1))
+        self.env.pop('FAIL_DATE')
+        self.env['FAKE_IA_LATEST_DATE'] = '2026-10-01T00:00:00Z'
+        self.log.write_text('')
+        self.run_catchup()
+        self.assertEqual(self.calls()[0]['command'], 'iasync.py')
+        args = self.calls('sync.py')[0]['args']
+        self.assertEqual(args[args.index('-t') + 1], '01-06-2025')
+        self.assertEqual(settings.next_date(), date(2025, 6, 3))
+
+    def test_uttarakhand_default_start_validation_needs_no_archive_query(self):
+        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='')
+        self.run_catchup('--validate')
+        self.assertEqual(self.calls(), [])
 
     def test_budget_expiry_does_not_advance_an_unfinished_day(self):
         settings = Settings.from_env(self.env)

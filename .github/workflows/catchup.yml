@@ -11,7 +11,7 @@ on:
         options: [all, andhra_goir, telangana_goir, uttarakhand_gos]
         default: all
       from_date:
-        description: Start date (DD-MM-YYYY); blank uses the source's earliest date
+        description: Start date (DD-MM-YYYY); blank uses latest IA date for Uttarakhand, earliest date for others
         type: string
         default: ''
       to_date:
@@ -36,4 +36,13 @@ jobs:
       from_date: ${{ github.event_name == 'schedule' && '17-04-2026' || inputs.from_date }}
       to_date: ${{ inputs.to_date }}
       run_time_mins: ${{ inputs.run_time_mins || '210' }}
+    secrets: inherit
+
+  uttarakhand:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'schedule'
+    uses: ./.github/workflows/run-archive.yml
+    with:
+      mode: catchup
+      source: uttarakhand_gos
+      run_time_mins: '210'
     secrets: inherit

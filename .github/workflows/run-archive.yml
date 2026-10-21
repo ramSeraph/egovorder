@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: ${{ fromJSON(inputs.source == 'andhra_goir' && '["andhra_goir"]' || inputs.source == 'telangana_goir' && '["telangana_goir"]' || inputs.source == 'uttarakhand_gos' && '["uttarakhand_gos"]' || '["andhra_goir","telangana_goir","uttarakhand_gos"]') }}
+        source: ${{ fromJSON(inputs.source == 'andhra_goir' && '["andhra_goir"]' || inputs.source == 'telangana_goir' && '["telangana_goir"]' || inputs.source == 'uttarakhand_gos' && '["uttarakhand_gos"]' || inputs.mode == 'catchup' && '["andhra_goir","telangana_goir","uttarakhand_gos"]' || '["andhra_goir","telangana_goir"]') }}
     concurrency:
       group: goir-${{ matrix.source }}-false
       cancel-in-progress: false

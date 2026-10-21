@@ -32,11 +32,16 @@ class ResumeScriptTests(unittest.TestCase):
         )
 
     def test_no_archive_items_fall_back_to_source_start_dates(self):
-        for source, expected in (("andhra_goir", "01-06-2008"), ("telangana_goir", "02-06-2014"),
-                                 ("uttarakhand_gos", "13-05-1999")):
+        for source, expected in (("andhra_goir", "01-06-2008"), ("telangana_goir", "02-06-2014")):
             with self.subTest(source=source):
                 result = self.run_script("get_fromdate.sh", source)
                 self.assertEqual(result.stdout.strip(), expected)
+
+    def test_uttarakhand_without_an_archived_date_does_not_fall_back_to_history(self):
+        with self.assertRaises(subprocess.CalledProcessError) as error:
+            self.run_script('get_fromdate.sh', 'uttarakhand_gos')
+        self.assertIn('refusing to start a historical backfill', error.exception.stderr)
+        self.assertNotIn('13-05-1999', error.exception.stdout)
 
     def test_latest_archive_date_is_written_to_output(self):
         self.env["FAKE_IA_OUTPUT"] = '{"date":"2025-06-01T00:00:00Z"}'

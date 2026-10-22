@@ -6,6 +6,7 @@ from http.cookiejar import CookieJar
 import json
 import os
 import urllib.parse
+from xml.etree import ElementTree
 
 from .baseorder import BaseOrder
 from ..utils import ext_ops
@@ -62,7 +63,22 @@ class UttarakhandGO(BaseOrder):
         return docid, parts._replace(scheme='https').geturl()
 
     def is_valid_order(self, doc, minsize):
-        return super().is_valid_order(doc, minsize) and ext_ops.get_buffer_type(doc) != 'text/html'
+        return super().is_valid_order(doc, minsize) and ext_ops.get_buffer_type(doc) not in (
+            'text/html', 'text/xml', 'application/xml',
+        )
+
+    def missing_order_reason(self, doc):
+        # The portal serves this XML notice with HTTP 200 and a PDF content type.
+        if ext_ops.get_buffer_type(doc) not in ('text/xml', 'application/xml'):
+            return None
+        try:
+            root = ElementTree.fromstring(doc)
+        except ElementTree.ParseError:
+            return None
+        if (root.tag == 'WSException' and root.findtext('errorCode', '').strip() == '404'
+                and root.findtext('message', '').strip().casefold() == 'document not found'):
+            return 'Document Not Found'
+        return None
 
     def download_oneday(self, relpath, dateobj):
         cookiejar = CookieJar()

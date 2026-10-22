@@ -124,6 +124,35 @@ class UttarakhandTests(unittest.TestCase):
         self.assertIsNone(self.storage.get_rawfile_path(f'{RELPATH}/{DOCID}'))
         self.assertIsNone(self.storage.get_metainfo(f'{RELPATH}/{DOCID}'))
 
+    def test_missing_document_notice_is_skipped_and_following_orders_download(self):
+        notice = (FIXTURE.parent / 'uttarakhand_missing_document.xml').read_bytes()
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                self.scraper.strict_downloads = strict
+                next_id = f'next-order-{strict}'
+                rows = self.rows + [dict(self.rows[0], FilePath=f'/GOFolder/PDF/{next_id}.pdf')]
+                responses = self.responses(rows) + [response(notice, self.scraper.baseurl),
+                                                   response(PDF, self.scraper.baseurl)]
+                with patch.object(self.scraper, 'download_url', side_effect=responses):
+                    paths = self.scraper.download_oneday(RELPATH, DATE)
+                self.assertIsNone(self.storage.get_rawfile_path(f'{RELPATH}/{DOCID}'))
+                self.assertIsNone(self.storage.get_metainfo(f'{RELPATH}/{DOCID}'))
+                self.assertEqual(paths, [f'{RELPATH}/{next_id}'])
+                self.assertEqual(Path(self.storage.get_rawfile_path(paths[0])).read_bytes(), PDF)
+
+    def test_other_xml_errors_are_not_treated_as_missing_documents(self):
+        notice = (FIXTURE.parent / 'uttarakhand_missing_document.xml').read_bytes()
+        for body in (notice.replace(b'404', b'500'),
+                     notice.replace(b'Document Not Found', b'Access denied'),
+                     notice.replace(b'WSException', b'OtherResponse')):
+            with self.subTest(body=body):
+                responses = self.responses(self.rows) + [response(body, self.scraper.baseurl)]
+                with patch.object(self.scraper, 'download_url', side_effect=responses):
+                    with self.assertRaises(RuntimeError):
+                        self.scraper.download_oneday(RELPATH, DATE)
+                self.assertIsNone(self.storage.get_rawfile_path(f'{RELPATH}/{DOCID}'))
+                self.assertIsNone(self.storage.get_metainfo(f'{RELPATH}/{DOCID}'))
+
 
 if __name__ == '__main__':
     unittest.main()

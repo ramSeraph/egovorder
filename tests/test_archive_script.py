@@ -117,7 +117,7 @@ class ArchiveScriptTests(unittest.TestCase):
                 self.assertEqual(args[args.index("-s") + 1], source)
                 self.assertEqual(args[args.index("-t") + 1], "01-01-2025")
                 self.assertEqual(args[args.index("-T") + 1], "30-06-2025")
-                self.assertEqual(args[args.index("-W") + 1], "1800")
+                self.assertEqual(args[args.index("-W") + 1], "10800")
                 self.assertIn(f"in.gov.{source.removesuffix('_goir')}.goir.", download["done"])
                 self.assertEqual(self.calls()[-1]["command"], "iasync.py")
 

@@ -20,7 +20,7 @@ on:
       run_time_mins:
         description: Download time budget in minutes (1–210)
         type: string
-        default: '30'
+        default: '180'
 
 permissions:
   contents: read
@@ -35,5 +35,5 @@ jobs:
       from_date: ${{ inputs.from_date }}
       to_date: ${{ inputs.to_date }}
       last_n_days: ${{ github.event_name == 'schedule' && '180' || inputs.last_n_days }}
-      run_time_mins: ${{ inputs.run_time_mins || '30' }}
+      run_time_mins: ${{ inputs.run_time_mins || '180' }}
     secrets: inherit

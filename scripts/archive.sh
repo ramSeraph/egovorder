@@ -23,7 +23,7 @@ last_n_days="${LAST_N_DAYS-180}"
 if [[ "$SOURCE" == 'uttarakhand_gos' ]]; then
   last_n_days="${LAST_N_DAYS-}"
 fi
-run_time_mins="${RUN_TIME_MINS:-30}"
+run_time_mins="${RUN_TIME_MINS:-180}"
 testing="${TESTING_MODE:-false}"
 data_dir="${DATA_DIR:-data}"
 

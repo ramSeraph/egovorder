@@ -23,7 +23,7 @@ on:
         default: '180'
       run_time_mins:
         type: string
-        default: '30'
+        default: '180'
     secrets:
       IA_ACCESS_KEY:
         required: true

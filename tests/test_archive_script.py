@@ -149,6 +149,16 @@ class ArchiveScriptTests(unittest.TestCase):
         self.assertEqual(args[args.index('-t') + 1], '01-06-2025')
         self.assertIn('identifier:in.gov.uttarakhand.go.', self.calls('ia')[0]['args'][1])
 
+    def test_uttarakhand_daily_workflow_can_scan_the_180_day_lookback(self):
+        self.env.update(SOURCE='uttarakhand_gos', LAST_N_DAYS='180')
+        self.run_archive()
+        download = self.calls('sync.py')[0]
+        args = download['args']
+        self.assertEqual(args[args.index('-t') + 1], '01-01-2025')
+        self.assertEqual(args[args.index('-T') + 1], '30-06-2025')
+        self.assertIn('in.gov.uttarakhand.go.', download['done'])
+        self.assertEqual(self.calls()[-1]['command'], 'iasync.py')
+
     def test_sandbox_queries_and_uploads_stay_in_sandbox(self):
         self.env["TESTING_MODE"] = "true"
         self.run_archive()

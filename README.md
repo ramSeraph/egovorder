@@ -35,8 +35,12 @@ Both commands support `--help`.
 
 ## Workflows
 
-- [Daily archive](https://github.com/ramSeraph/egovorder/actions/workflows/archive.yml)
-- [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml): all three sources every six hours
+| State | Daily archive (08:30 IST) | Catch-up (every six hours) |
+| --- | --- | --- |
+| Andhra Pradesh | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-daily.yml) | [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-catchup.yml) |
+| Telangana | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/telangana-daily.yml) | [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/telangana-catchup.yml) |
+| Uttarakhand | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/uttarakhand-daily.yml) | [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/uttarakhand-catchup.yml) |
+
 - [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml): historical audit gaps only, every six hours
 - [Monthly keep-alive](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml)
 

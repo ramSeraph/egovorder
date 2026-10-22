@@ -17,8 +17,9 @@ import sys
 from datetime import datetime
 from egovorder.srcs.datasrcs_info import get_start_date
 latest = os.environ["GOIR_LATEST_DATE"]
-if not latest and os.environ["GOIR_SOURCE"] == "uttarakhand_gos":
-    sys.exit("No archived Uttarakhand date found; refusing to start a historical backfill")
+if not latest and (os.environ["GOIR_SOURCE"] == "uttarakhand_gos"
+                   or os.environ.get("REQUIRE_ARCHIVED_DATE") == "1"):
+    sys.exit(f"No archived date found for {os.environ['GOIR_SOURCE']}; refusing to start a historical backfill")
 date = datetime.fromisoformat(latest.replace("Z", "+00:00")) if latest else get_start_date(os.environ["GOIR_SOURCE"])
 print(date.strftime("%d-%m-%Y"))
 PY

@@ -1,0 +1,39 @@
+name: Telangana daily archive
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 08:30 IST.
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: Start date (DD-MM-YYYY); overrides the lookback
+        type: string
+        default: ''
+      to_date:
+        description: End date (DD-MM-YYYY); blank uses today
+        type: string
+        default: ''
+      last_n_days:
+        description: Lookback days; blank resumes from the latest archived date
+        type: string
+        default: '180'
+      run_time_mins:
+        description: Download time budget in minutes (1–210)
+        type: string
+        default: '30'
+
+permissions:
+  contents: read
+
+jobs:
+  daily:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/run-archive.yml
+    with:
+      mode: recent
+      source: telangana_goir
+      from_date: ${{ inputs.from_date }}
+      to_date: ${{ inputs.to_date }}
+      last_n_days: ${{ github.event_name == 'schedule' && '180' || inputs.last_n_days }}
+      run_time_mins: ${{ inputs.run_time_mins || '30' }}
+    secrets: inherit

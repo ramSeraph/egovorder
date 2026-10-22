@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -59,7 +60,7 @@ class Settings:
             if env.get("FROM_DATE"):
                 start = datetime.strptime(env["FROM_DATE"], "%d-%m-%Y").date()
             else:
-                start = None if source == "uttarakhand_gos" else get_start_date(source).date()
+                start = None if source in ("andhra_goir", "uttarakhand_gos") else get_start_date(source).date()
             end = (
                 datetime.strptime(env["TO_DATE"], "%d-%m-%Y").date()
                 if env.get("TO_DATE") else datetime.now(timezone.utc).date()
@@ -107,6 +108,43 @@ class Settings:
                     yield path
 
 
+def migrate_andhra_catchup(settings):
+    """Import the checkpoint and pending files from the retired latest worker."""
+    if (settings.source != "andhra_goir" or settings.sandbox
+            or settings.start is not None or settings.checkpoint.exists()):
+        return
+    legacy = settings.data / "backfill" / "latest" / "production"
+    checkpoint = legacy / "latest.json"
+    if not checkpoint.exists():
+        return
+    try:
+        state = json.loads(checkpoint.read_text())
+        start = date.fromisoformat(state["start_date"])
+        cursor = date.fromisoformat(state["next_date"])
+        if start < get_start_date(settings.source).date() or cursor < start:
+            raise ValueError("checkpoint precedes its start date")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid previous Andhra catch-up checkpoint: {checkpoint}") from exc
+
+    # Preserve originals until all files and the new checkpoint are durable.
+    # Pending uploads use the same identifiers and file layout in both workers.
+    for folder in ("raw", "metatags"):
+        for source in sorted((legacy / "data" / folder / settings.source).rglob("*")):
+            if not source.is_file():
+                continue
+            target = settings.data / source.relative_to(legacy / "data")
+            if target.exists():
+                if target.read_bytes() != source.read_bytes():
+                    raise ValueError(f"Conflicting pending Andhra file: {target}")
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            shutil.copyfile(source, temporary)
+            temporary.replace(target)
+    settings.save_progress(cursor)
+    print(f"Migrated Andhra catch-up progress; resuming {cursor.isoformat()}", flush=True)
+
+
 def stop_process_group(process):
     """Stop the shell and its scraper/upload descendants before caching data."""
     try:
@@ -151,12 +189,13 @@ def catch_up(settings, runner=run_command, clock=time.monotonic):
         TESTING_MODE="true" if settings.sandbox else "false",
         EGOVORDER_STRICT_DOWNLOADS="1",
     )
+    migrate_andhra_catchup(settings)
     if settings.start is None and not settings.checkpoint.exists():
         # Seed once from IA, then retain a stable checkpoint even if another
         # uploader later archives a newer date while this catch-up is unfinished.
         latest_file = settings.checkpoint.with_suffix('.from-date')
         latest_file.parent.mkdir(parents=True, exist_ok=True)
-        query_env = dict(env)
+        query_env = dict(env, REQUIRE_ARCHIVED_DATE="1")
         if settings.sandbox:
             query_env['TESTING'] = '1'
         else:

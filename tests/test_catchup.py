@@ -123,8 +123,8 @@ class CatchupTests(unittest.TestCase):
         self.env["FROM_DATE"] = "02-06-2025"
         self.assertEqual(Settings.from_env(self.env).next_date(), date(2025, 6, 2))
 
-    def test_defaults_use_historical_start_and_210_minutes(self):
-        for source, expected in (("andhra_goir", date(2008, 6, 1)), ("telangana_goir", date(2014, 6, 2)),
+    def test_default_starts_and_210_minute_budget(self):
+        for source, expected in (("andhra_goir", None), ("telangana_goir", date(2014, 6, 2)),
                                  ("uttarakhand_gos", None)):
             with self.subTest(source=source):
                 env = dict(self.env, SOURCE=source, FROM_DATE="", RUN_TIME_MINS="")
@@ -132,30 +132,114 @@ class CatchupTests(unittest.TestCase):
                 self.assertEqual(settings.start, expected)
                 self.assertEqual(settings.minutes, 210)
 
-    def test_uttarakhand_catchup_seeds_once_from_ia_then_uses_saved_progress(self):
-        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='')
-        self.run_catchup()
-        self.assertEqual(len(self.calls("sync.py")), 2)
-        self.assertEqual(len(self.calls("iasync.py")), 2)
+    def test_catchup_seeds_once_from_ia_then_uses_saved_progress(self):
+        for source, prefix in (("andhra_goir", "in.gov.andhra.goir."),
+                               ("uttarakhand_gos", "in.gov.uttarakhand.go.")):
+            with self.subTest(source=source):
+                self.env.update(SOURCE=source, FROM_DATE='', TO_DATE='02-06-2025',
+                                FAKE_IA_LATEST_DATE='2025-06-01T00:00:00Z',
+                                DATA_DIR=str(self.data / source))
+                self.log.write_text('')
+                self.run_catchup()
+                self.assertEqual(len(self.calls("sync.py")), 2)
+                self.assertEqual(len(self.calls("iasync.py")), 2)
+                settings = Settings.from_env(self.env)
+                self.assertEqual(settings.next_date(), date(2025, 6, 3))
+                self.assertTrue(settings.checkpoint.name.endswith('-latest.json'))
+                for call in self.calls("sync.py"):
+                    self.assertIn(prefix, call["done"])
+                seed_queries = [call for call in self.calls('ia') if '-i' not in call['args']]
+                self.assertEqual(len(seed_queries), 1)
+                self.log.write_text('')
+                self.env.update(TO_DATE='03-06-2025', FAKE_IA_LATEST_DATE='2026-10-01T00:00:00Z')
+                self.run_catchup()
+                self.assertEqual(settings.next_date(), date(2025, 6, 4))
+                self.assertEqual(len(self.calls('sync.py')), 1)
+                self.assertEqual([call for call in self.calls('ia') if '-i' not in call['args']], [])
+
+    def test_empty_archive_cannot_start_an_unrequested_backfill(self):
+        for source in ('andhra_goir', 'uttarakhand_gos'):
+            with self.subTest(source=source):
+                self.env.update(SOURCE=source, FROM_DATE='', FAKE_IA_LATEST_DATE='')
+                self.run_catchup(success=False)
+                self.assertEqual(self.calls('sync.py'), [])
+                self.assertFalse(Settings.from_env(self.env).checkpoint.exists())
+
+    def legacy_andhra_state(self):
+        root = self.data / 'backfill' / 'latest' / 'production'
+        root.mkdir(parents=True)
+        (root / 'latest.json').write_text(json.dumps({
+            'start_date': '2025-06-01', 'next_date': '2025-06-02', 'through': '2025-06-02',
+        }))
+        for folder, suffix in (('raw', '.pdf'), ('metatags', '.xml')):
+            pending = root / 'data' / folder / 'andhra_goir' / '2025-06-02' / ('E-123' + suffix)
+            pending.parent.mkdir(parents=True)
+            pending.write_bytes(b'pending legacy upload')
+        return root
+
+    def test_andhra_migration_preserves_pending_uploads_and_progress_across_retries(self):
+        legacy = self.legacy_andhra_state()
+        self.env.update(FROM_DATE='', FAIL_UPLOAD='1')
         settings = Settings.from_env(self.env)
-        self.assertEqual(settings.next_date(), date(2025, 6, 3))
-        self.assertTrue(settings.checkpoint.name.endswith('-latest.json'))
-        for call in self.calls("sync.py"):
-            self.assertIn("in.gov.uttarakhand.go.", call["done"])
-        seed_queries = [call for call in self.calls('ia') if '-i' not in call['args']]
-        self.assertEqual(len(seed_queries), 1)
+        self.run_catchup(success=False)
+        self.assertEqual([call['command'] for call in self.calls()], ['iasync.py'])
+        self.assertEqual(settings.next_date(), date(2025, 6, 2))
+        self.assertEqual(len(list(settings.pending_files())), 2)
+        for pending in settings.pending_files():
+            self.assertEqual(pending.read_bytes(), b'pending legacy upload')
+            original = legacy / 'data' / pending.relative_to(self.data)
+            self.assertEqual(original.read_bytes(), pending.read_bytes())
+
+        self.env.pop('FAIL_UPLOAD')
         self.log.write_text('')
-        self.env.update(TO_DATE='03-06-2025', FAKE_IA_LATEST_DATE='2026-10-01T00:00:00Z')
         self.run_catchup()
-        self.assertEqual(settings.next_date(), date(2025, 6, 4))
+        self.assertEqual(self.calls()[0]['command'], 'iasync.py')
         self.assertEqual(len(self.calls('sync.py')), 1)
+        args = self.calls('sync.py')[0]['args']
+        self.assertEqual(args[args.index('-t') + 1], '02-06-2025')
+        self.assertEqual(settings.next_date(), date(2025, 6, 3))
+        self.assertEqual(list(settings.pending_files()), [])
         self.assertEqual([call for call in self.calls('ia') if '-i' not in call['args']], [])
 
-    def test_uttarakhand_empty_archive_cannot_start_a_backfill(self):
-        self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='', FAKE_IA_LATEST_DATE='')
+        # The old cache must not reimport files or rewind completed progress.
+        self.log.write_text('')
+        self.run_catchup()
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(list(settings.pending_files()), [])
+
+    def test_andhra_migration_only_applies_to_production_latest_catchup(self):
+        self.legacy_andhra_state()
+        for values in ({'FROM_DATE': '01-06-2025'},
+                       {'FROM_DATE': '', 'TESTING_MODE': 'true'},
+                       {'FROM_DATE': '', 'SOURCE': 'uttarakhand_gos'}):
+            with self.subTest(values=values):
+                settings = Settings.from_env(dict(self.env, **values))
+                job.migrate_andhra_catchup(settings)
+                self.assertFalse(settings.checkpoint.exists())
+                self.assertEqual(list(settings.pending_files()), [])
+
+    def test_andhra_migration_rejects_an_invalid_checkpoint_before_uploading(self):
+        legacy = self.legacy_andhra_state()
+        (legacy / 'latest.json').write_text(json.dumps({
+            'start_date': '2025-06-02', 'next_date': '2025-06-01',
+        }))
+        self.env['FROM_DATE'] = ''
         self.run_catchup(success=False)
-        self.assertEqual(self.calls('sync.py'), [])
+        settings = Settings.from_env(self.env)
+        self.assertFalse(settings.checkpoint.exists())
+        self.assertEqual(list(settings.pending_files()), [])
+        self.assertEqual(self.calls(), [])
+
+    def test_andhra_migration_does_not_overwrite_conflicting_pending_files(self):
+        self.legacy_andhra_state()
+        pending = self.data / 'raw' / 'andhra_goir' / '2025-06-02' / 'E-123.pdf'
+        pending.parent.mkdir(parents=True)
+        pending.write_bytes(b'existing pending upload')
+        self.env['FROM_DATE'] = ''
+        self.run_catchup(success=False)
+        self.assertEqual(pending.read_bytes(), b'existing pending upload')
         self.assertFalse(Settings.from_env(self.env).checkpoint.exists())
+        self.assertEqual(self.calls(), [])
 
     def test_uttarakhand_failed_day_is_retained_despite_newer_archive_items(self):
         self.env.update(SOURCE='uttarakhand_gos', FROM_DATE='', FAIL_DATE='01-06-2025')

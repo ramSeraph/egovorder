@@ -1,18 +1,10 @@
-# Adapted from egazette/.github/workflows/andhra_goir.yml and telangana_goir.yml for egovorder.
-# Modified for the GOIR-only extraction; see LICENSE for licensing scope.
-
-name: Archive government orders
+name: Uttarakhand daily archive
 
 on:
   schedule:
-    - cron: '0 3 * * *' # 08:30 IST, matching the original workflows
+    - cron: '0 3 * * *' # 08:30 IST.
   workflow_dispatch:
     inputs:
-      source:
-        description: Source to archive
-        type: choice
-        options: [all, andhra_goir, telangana_goir]
-        default: all
       from_date:
         description: Start date (DD-MM-YYYY); overrides the lookback
         type: string
@@ -26,7 +18,7 @@ on:
         type: string
         default: '180'
       run_time_mins:
-        description: Download time budget per source, in minutes (1–210)
+        description: Download time budget in minutes (1–210)
         type: string
         default: '30'
 
@@ -34,12 +26,12 @@ permissions:
   contents: read
 
 jobs:
-  archive:
+  daily:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/run-archive.yml
     with:
       mode: recent
-      source: ${{ inputs.source || 'all' }}
+      source: uttarakhand_gos
       from_date: ${{ inputs.from_date }}
       to_date: ${{ inputs.to_date }}
       last_n_days: ${{ github.event_name == 'schedule' && '180' || inputs.last_n_days }}

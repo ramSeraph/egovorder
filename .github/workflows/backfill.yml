@@ -27,13 +27,12 @@ jobs:
         timeout-minutes: 3
         with:
           enable-cache: true
-          cache-dependency-glob: 'requirements/*.txt'
+          cache-dependency-glob: 'uv.lock'
 
       - name: Install dependencies
         timeout-minutes: 5
         run: |
-          uv venv --python 3.12
-          uv pip install -r requirements/iasync.txt
+          uv sync --locked --extra archive
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Validate plan and secrets

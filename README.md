@@ -14,20 +14,19 @@ Only these sources are registered:
 
 ## Quick start
 
-Requires Python 3.10+ and the system `libmagic` library.
+Requires Python 3.10+, [uv](https://docs.astral.sh/uv/) and the system `libmagic`
+library.
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements/iasync.txt
+uv sync --locked --extra archive
 
-python sync.py -s andhra_goir -d 7 -D data
+uv run --locked --extra archive python sync.py -s andhra_goir -d 7 -D data
 ```
 
 Set `IA_ACCESS_KEY` and `IA_SECRET_KEY` to upload downloaded orders:
 
 ```sh
-python iasync.py -u -D data -s andhra_goir
+uv run --locked --extra archive python iasync.py -u -D data -s andhra_goir
 ```
 
 Use `telangana_goir` for Telangana or `uttarakhand_gos` for Uttarakhand.

@@ -68,7 +68,9 @@ def main(argv=None):
     try:
         from .archive import OrderIA, Stats
     except ModuleNotFoundError as exc:
-        parser.error(f"archive dependency missing ({exc.name}); install requirements/iasync.txt")
+        parser.error(
+            f"archive dependency missing ({exc.name}); run 'uv sync --locked --extra archive'"
+        )
     from .utils.file_storage import FileManager
 
     statsdir = args.data_dir / "stats"

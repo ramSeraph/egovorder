@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-archive = ["internetarchive", "pymupdf"]
+archive = [
+    "internetarchive",
+    "pymupdf",
+]
 
 [project.scripts]
 egovorder-sync = "egovorder.sync:main"

@@ -269,6 +269,10 @@ class BaseOrder(Downloader):
     def is_valid_order(self, doc, min_size):
         return (min_size <= 0 or len(doc) > min_size)
 
+    def missing_order_reason(self, doc):
+        """Return an explicit source notice when the document is unavailable."""
+        return None
+
 
     def pull_order(self, gurl, referer = None, postdata = None,
                      cookiefile = None, headers = {}, \
@@ -314,6 +318,10 @@ class BaseOrder(Downloader):
                 else:
                     self.download_error('Not able to save the document %s', relurl)
             else:
+                reason = self.missing_order_reason(doc) if doc else None
+                if reason:
+                    self.logger.warning('Skipping unavailable document for %s: %s', relurl, reason)
+                    return updated
                 self.download_error('Document missing or invalid for %s', relurl)
         else:
             self.logger.info('rawdoc already exists %s' % relurl)

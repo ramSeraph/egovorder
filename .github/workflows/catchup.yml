@@ -2,7 +2,7 @@ name: Catch up government orders
 
 on:
   schedule:
-    - cron: '0 9 * * *' # 14:30 IST, after the daily archive's four-hour window.
+    - cron: '0 5,11,17,23 * * *' # Every six hours; 04:30, 10:30, 16:30, 22:30 IST.
   workflow_dispatch:
     inputs:
       source:
@@ -11,7 +11,7 @@ on:
         options: [all, andhra_goir, telangana_goir, uttarakhand_gos]
         default: all
       from_date:
-        description: Start date (DD-MM-YYYY); blank uses latest IA date for Uttarakhand, earliest date for others
+        description: Start date (DD-MM-YYYY); blank dates resume Andhra/Uttarakhand from IA, Telangana from its earliest date
         type: string
         default: ''
       to_date:
@@ -27,22 +27,54 @@ permissions:
   contents: read
 
 jobs:
-  catchup:
-    if: github.ref == 'refs/heads/main'
+  andhra:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' ||
+       ((inputs.source == 'all' || inputs.source == 'andhra_goir') &&
+        inputs.from_date == '' && inputs.to_date == ''))
+    uses: ./.github/workflows/run-andhra.yml
+    with:
+      partition: latest
+      run_time_mins: ${{ inputs.run_time_mins || '210' }}
+    secrets: inherit
+
+  andhra_dates:
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' &&
+      (inputs.source == 'all' || inputs.source == 'andhra_goir') &&
+      (inputs.from_date != '' || inputs.to_date != '')
     uses: ./.github/workflows/run-archive.yml
     with:
       mode: catchup
-      source: ${{ github.event_name == 'schedule' && 'telangana_goir' || inputs.source }}
+      source: andhra_goir
+      from_date: ${{ inputs.from_date }}
+      to_date: ${{ inputs.to_date }}
+      run_time_mins: ${{ inputs.run_time_mins || '210' }}
+    secrets: inherit
+
+  telangana:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.source == 'all' || inputs.source == 'telangana_goir')
+    uses: ./.github/workflows/run-archive.yml
+    with:
+      mode: catchup
+      source: telangana_goir
       from_date: ${{ github.event_name == 'schedule' && '17-04-2026' || inputs.from_date }}
       to_date: ${{ inputs.to_date }}
       run_time_mins: ${{ inputs.run_time_mins || '210' }}
     secrets: inherit
 
   uttarakhand:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'schedule'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.source == 'all' || inputs.source == 'uttarakhand_gos')
     uses: ./.github/workflows/run-archive.yml
     with:
       mode: catchup
       source: uttarakhand_gos
-      run_time_mins: '210'
+      from_date: ${{ inputs.from_date }}
+      to_date: ${{ inputs.to_date }}
+      run_time_mins: ${{ inputs.run_time_mins || '210' }}
     secrets: inherit

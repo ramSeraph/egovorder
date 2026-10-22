@@ -266,6 +266,21 @@ class TelanganaGOIR(BaseOrder):
 
         return mtype != 'text/html'
 
+    def missing_order_reason(self, doc):
+        if ext_ops.get_buffer_type(doc) != 'text/html':
+            return None
+        page = utils.parse_webpage(doc, self.parser)
+        if page is not None:
+            # The portal returns the search page with this alert when an issued
+            # order has no uploaded document. Other HTML responses remain errors.
+            for script in page.find_all('script'):
+                if re.search(
+                        r"\bbootbox\.alert\s*\(\s*\{[^}]*\bmessage\s*:\s*"
+                        r"(['\"])\s*Go\s+Text\s+Not\s+Uploaded\s*\1",
+                        script.get_text(), re.I):
+                    return 'Go Text Not Uploaded'
+        return None
+
 
 
     def download_oneday(self, relpath, dateobj):

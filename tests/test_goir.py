@@ -202,6 +202,52 @@ class SourceTests(unittest.TestCase):
         self.assertFalse(scraper.is_valid_order(b"<!doctype html><html>Error</html>", 0))
         self.assertFalse(scraper.is_valid_order(PDF, len(PDF) + 1))
 
+    def test_telangana_missing_document_does_not_block_following_pages(self):
+        for strict in (False, True):
+            with self.subTest(strict=strict), tempfile.TemporaryDirectory() as temp:
+                storage = FileManager(temp, False, False)
+                scraper = TelanganaGOIR("telangana_goir", storage)
+                scraper.strict_downloads = strict
+                page_one = (FIXTURES / "telangana_goir.html").read_text()
+                page_two = page_one.replace("page-one-state", "page-two-state").replace("42", "43")
+                missing = (FIXTURES / "telangana_missing_document.html").read_bytes()
+                responses = [
+                    response(page_one, scraper.baseurl), response(page_one, scraper.baseurl),
+                    response(missing, scraper.baseurl), response(page_two, scraper.baseurl),
+                    response(PDF, scraper.baseurl),
+                ]
+                relpath = f"telangana_goir/{DATE}"
+                with patch.object(scraper, "download_url", side_effect=responses), \
+                     self.assertLogs(scraper.logger, level="WARNING") as logs:
+                    paths = scraper.download_oneday(relpath, DATE)
+                self.assertEqual(paths, [f"{relpath}/finance-manuscript-43"])
+                self.assertIsNone(storage.get_rawfile_path(f"{relpath}/finance-manuscript-42"))
+                self.assertIsNone(storage.get_metainfo(f"{relpath}/finance-manuscript-42"))
+                self.assertIn(f"{relpath}/finance-manuscript-42", logs.output[0])
+                self.assertIn("Go Text Not Uploaded", logs.output[0])
+                self.assertEqual(Path(storage.get_rawfile_path(paths[0])).read_bytes(), PDF)
+                self.assertEqual(storage.get_metainfo(paths[0])["gonum"], "43")
+
+    def test_telangana_only_skips_an_explicit_missing_document_alert(self):
+        for content in (
+            b"",
+            b"<html>Portal temporarily unavailable</html>",
+            b"<html><p>Go Text Not Uploaded</p></html>",
+            b"<html><script>const message = 'Go Text Not Uploaded';</script></html>",
+            b"<html><script>bootbox.alert({message:'Session expired'});</script></html>",
+            b"<html><script>bootbox.alert({message:'Go Text Not Uploaded: retry later'});</script></html>",
+        ):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as temp:
+                storage = FileManager(temp, False, False)
+                scraper = TelanganaGOIR("telangana_goir", storage)
+                scraper.strict_downloads = True
+                relurl = f"telangana_goir/{DATE}/finance-manuscript-42"
+                with patch.object(scraper, "download_url", return_value=response(content, scraper.baseurl)):
+                    with self.assertRaisesRegex(RuntimeError, "Document missing or invalid"):
+                        scraper.save_order(relurl, scraper.baseurl, MetaInfo())
+                self.assertIsNone(storage.get_rawfile_path(relurl))
+                self.assertIsNone(storage.get_metainfo(relurl))
+
     def test_telangana_not_issued_placeholder_does_not_block_following_pages(self):
         for abstract in ("Not Issued", " not\n issued ", "NOT ISSUED."):
             with self.subTest(abstract=abstract), tempfile.TemporaryDirectory() as temp:

@@ -6,11 +6,11 @@ and archiving government orders from Andhra Pradesh, Telangana and Uttarakhand.
 
 Only these sources are registered:
 
-| Source | Portal | Archive collection | Earliest configured date |
+| Source | Portal | Internet Archive collection | Earliest configured date |
 | --- | --- | --- | --- |
-| `andhra_goir` | https://goir.ap.gov.in/ | `andhra-goir` | 2008-06-01 |
-| `telangana_goir` | https://goir.telangana.gov.in/ | `telangana-goir` | 2014-06-02 |
-| `uttarakhand_gos` | https://go.uk.gov.in/ | `uttarakhand-gos` | 1999-05-13 |
+| `andhra_goir` | https://goir.ap.gov.in/ | [andhra-goir](https://archive.org/details/andhra-goir) | 2008-06-01 |
+| `telangana_goir` | https://goir.telangana.gov.in/ | [telangana-goir](https://archive.org/details/telangana-goir) | 2014-06-02 |
+| `uttarakhand_gos` | https://go.uk.gov.in/ | [uttarakhand-gos](https://archive.org/details/uttarakhand-gos) | 1999-05-13 |
 
 ## Quick start
 
@@ -36,10 +36,13 @@ Both commands support `--help`.
 ## Workflows
 
 - [Daily archive](https://github.com/ramSeraph/egovorder/actions/workflows/archive.yml)
-- [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml)
-- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml)
+- [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/catchup.yml): all three sources every six hours
+- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml): historical audit gaps only, every six hours
 - [Monthly keep-alive](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml)
-- [Offline tests](https://github.com/ramSeraph/egovorder/actions/workflows/tests.yml)
+
+Catch-up and backfill run at 04:30, 10:30, 16:30 and 22:30 IST. Andhra catch-up
+resumes its saved progress from the latest archived date; manual catch-up runs
+also support explicit date ranges.
 
 ## Origin and license
 

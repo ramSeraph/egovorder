@@ -196,6 +196,45 @@ class SourceTests(unittest.TestCase):
                 else:
                     self.assertIn("gid=12346&fileType=1", fetch.call_args_list[4].args[0])
 
+    def test_andhra_empty_document_does_not_block_following_pages(self):
+        for strict in (False, True):
+            with self.subTest(strict=strict), tempfile.TemporaryDirectory() as temp:
+                storage = FileManager(temp, False, False)
+                scraper = AndhraGOIR("andhra_goir", storage)
+                scraper.strict_downloads = strict
+                page_one = (FIXTURES / "andhra_goir.html").read_text()
+                page_two = page_one.replace("page-one-state", "page-two-state")
+                page_two = page_two.replace("12345", "12346").replace("42", "43")
+                responses = [
+                    response(page_one, scraper.baseurl), response(page_one, scraper.baseurl),
+                    response(b"", scraper.baseurl), response(page_two, scraper.baseurl),
+                    response(PDF, scraper.baseurl),
+                ]
+                relpath = f"andhra_goir/{DATE}"
+                with patch.object(scraper, "download_url", side_effect=responses), \
+                     self.assertLogs(scraper.logger, level="WARNING") as logs:
+                    paths = scraper.download_oneday(relpath, DATE)
+                self.assertEqual(paths, [f"{relpath}/1-12346"])
+                self.assertIsNone(storage.get_rawfile_path(f"{relpath}/1-12345"))
+                self.assertIsNone(storage.get_metainfo(f"{relpath}/1-12345"))
+                self.assertIn(f"{relpath}/1-12345", logs.output[0])
+                self.assertIn("Empty document response", logs.output[0])
+                self.assertEqual(Path(storage.get_rawfile_path(paths[0])).read_bytes(), PDF)
+                self.assertEqual(storage.get_metainfo(paths[0])["gonum"], "43")
+
+    def test_andhra_failed_document_request_still_blocks_catchup(self):
+        for failed in (None, response(None, "https://goir.ap.gov.in/")):
+            with self.subTest(response=failed), tempfile.TemporaryDirectory() as temp:
+                storage = FileManager(temp, False, False)
+                scraper = AndhraGOIR("andhra_goir", storage)
+                scraper.strict_downloads = True
+                relurl = f"andhra_goir/{DATE}/1-12345"
+                with patch.object(scraper, "download_url", return_value=failed):
+                    with self.assertRaises(RuntimeError):
+                        scraper.save_order(relurl, scraper.baseurl, MetaInfo())
+                self.assertIsNone(storage.get_rawfile_path(relurl))
+                self.assertIsNone(storage.get_metainfo(relurl))
+
     def test_telangana_rejects_html_as_a_document(self):
         scraper = TelanganaGOIR("telangana_goir", None)
         self.assertTrue(scraper.is_valid_order(PDF, 0))

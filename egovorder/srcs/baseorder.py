@@ -270,7 +270,7 @@ class BaseOrder(Downloader):
         return (min_size <= 0 or len(doc) > min_size)
 
     def missing_order_reason(self, doc):
-        """Return an explicit source notice when the document is unavailable."""
+        """Return a source-specific reason when the document is unavailable."""
         return None
 
 
@@ -318,7 +318,7 @@ class BaseOrder(Downloader):
                 else:
                     self.download_error('Not able to save the document %s', relurl)
             else:
-                reason = self.missing_order_reason(doc) if doc else None
+                reason = self.missing_order_reason(doc) if doc is not None else None
                 if reason:
                     self.logger.warning('Skipping unavailable document for %s: %s', relurl, reason)
                     return updated

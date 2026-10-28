@@ -18,6 +18,13 @@ class AndhraGOIR(BaseOrder):
         self.hostname     = 'goir.ap.gov.in'
         self.search_endp  = './'
 
+    def missing_order_reason(self, doc):
+        # Andhra returns HTTP 200 with an empty body for some unavailable
+        # documents, including E-572104 (2026-03-25).
+        if doc == b'':
+            return 'Empty document response from Andhra portal'
+        return None
+
     def remove_fields(self, postdata, fields):
         newdata = []
         for k, v in postdata:

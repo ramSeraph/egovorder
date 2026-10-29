@@ -87,7 +87,7 @@ class AndhraPortal:
         fields = self.form(home.content)
         fields[self.prefix + "BtnSearch"] = "Search"
         result = request(self.session, "POST", self.url, data=fields)
-        select = BeautifulSoup(result.content, "lxml").find("select", attrs={"name": self.page_field})
+        select = BeautifulSoup(result.content, "lxml", from_encoding="utf-8").find("select", attrs={"name": self.page_field})
         if select and self.scraper.get_selected_option(select) != "100":
             fields = self.form(result.content)
             fields[self.page_field] = "100"
@@ -97,7 +97,9 @@ class AndhraPortal:
         return result
 
     def parse_rows(self, content):
-        soup = BeautifulSoup(content, "lxml")
+        # Short final pages can be misdetected as Windows-1250, corrupting
+        # the rupee sign in the amount column and rejecting valid order rows.
+        soup = BeautifulSoup(content, "lxml", from_encoding="utf-8")
         table = soup.find("table", id="FileMoveList2")
         if not table:
             if self.scraper.get_search_form(content, "./") is not None and re.search(
@@ -158,7 +160,7 @@ class AndhraPortal:
             if total != expected:
                 raise RuntimeError(f"Source count changed during pagination for {self.day}")
             if not nextpage and len(rows) < total:
-                paging = BeautifulSoup(response.content, "lxml").find(id="divpagination")
+                paging = BeautifulSoup(response.content, "lxml", from_encoding="utf-8").find(id="divpagination")
                 if paging:
                     nextpage = next((a for a in paging.find_all("a", href=True)
                                      if a.get_text(strip=True) == "Last"), None)

@@ -1,5 +1,6 @@
 import contextlib
 import datetime
+import gzip
 import io
 from pathlib import Path
 import tempfile
@@ -73,6 +74,15 @@ class SourceTests(unittest.TestCase):
                 self.assertEqual(order["abstract"], "Allocation & expenditure")
                 self.assertIn("page2", nextpage["href"])
                 self.assertIsNone(scraper.parse_search_results(html, DATE, 2)[1])
+
+    def test_andhra_utf8_last_page_does_not_silently_drop_the_order(self):
+        scraper = AndhraGOIR("andhra_goir", None)
+        webpage = gzip.decompress((FIXTURES / "andhra_goir_2015-04-17_last_page.html.gz").read_bytes())
+        orders, _ = scraper.parse_search_results(webpage, datetime.date(2015, 4, 17), 2)
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]["gonum"], "103")
+        self.assertEqual(orders[0]["amount"], "22897")
+        self.assertIn("Government Vehicles – Supply", orders[0]["abstract"])
 
     def test_empty_results_do_not_crash(self):
         for name, cls in SOURCES:

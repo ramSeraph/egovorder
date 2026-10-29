@@ -1,4 +1,6 @@
 from datetime import date
+import gzip
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, call, patch
@@ -43,6 +45,25 @@ class PortalTests(unittest.TestCase):
         self.assertIsNone(row["href"])
         self.assertEqual(row["gonum"], "42")
         self.assertEqual(row["gotype"], "Routine")
+
+    def test_utf8_last_page_preserves_column_names_and_order_text(self):
+        # This short final page was incorrectly detected as Windows-1250.
+        source = portal.AndhraPortal(date(2015, 4, 17))
+        self.addCleanup(source.session.close)
+        fixture = Path(__file__).parent / "fixtures/andhra_goir_2015-04-17_last_page.html.gz"
+        rows, total, _ = source.parse_rows(gzip.decompress(fixture.read_bytes()))
+        self.assertEqual(total, 101)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["identifier"], "in.gov.andhra.goir.2015-04-17.E-339638")
+        self.assertEqual(row["amount"], "22897")
+        self.assertEqual(row["gonum"], "103")
+        self.assertEqual(row["gotype"], "Routine")
+        self.assertEqual(row["abstract"], (
+            "Government Vehicles – Supply of P.O.L by A.P. Stat Civil Supplies "
+            "Corporation Limited to the vehicles of YAT & C Department – Sanction "
+            "of expenditure for the month of March, 2015 – Orders – Issued."
+        ))
 
     def test_unrecognized_error_page_is_not_an_empty_result(self):
         with self.assertRaisesRegex(RuntimeError, "Unrecognized"):

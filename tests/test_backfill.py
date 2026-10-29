@@ -58,6 +58,7 @@ class BackfillTests(unittest.TestCase):
         )
         self.portal = SimpleNamespace(url="https://goir.ap.gov.in/", session=Mock())
         self.portal.session.request.return_value = self.document
+        patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=10 * 2**30)).start()
         patch.object(job.time, "sleep").start()
         self.upload = patch.object(job, "upload", return_value=[Mock(), Mock()]).start()
         self.addCleanup(patch.stopall)
@@ -368,6 +369,7 @@ class PlanTests(unittest.TestCase):
                 runner.save(pending_row, "downloaded", identifier="pending-test-item")
                 raise job.BudgetExpired
             with patch.dict(os.environ, {"GITHUB_ACTIONS": "false", "IA_ACCESS_KEY": "fake", "IA_SECRET_KEY": "fake"}), \
+                 patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=10 * 2**30)), \
                  patch.object(job, "get_session", return_value=Mock()), patch.object(job, "run_plan", side_effect=expire):
                 result = job.main(["--upload", "--state-dir", str(state), "--minutes", "1",
                                    "--from-date", "19-12-2018", "--to-date", "19-12-2018"])

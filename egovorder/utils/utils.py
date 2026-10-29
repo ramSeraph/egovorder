@@ -16,7 +16,9 @@ def get_proxydict(hostname):
 
 def parse_webpage(webpage, parser):
     try:
-        d = BeautifulSoup(webpage, parser)
+        # Prefer the portals' UTF-8 over encoding guesses on sparse result pages.
+        encoding = 'utf-8' if isinstance(webpage, bytes) else None
+        d = BeautifulSoup(webpage, parser, from_encoding=encoding)
         return d
     except:
         return None

@@ -58,7 +58,6 @@ class BackfillTests(unittest.TestCase):
         )
         self.portal = SimpleNamespace(url="https://goir.ap.gov.in/", session=Mock())
         self.portal.session.request.return_value = self.document
-        patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=10 * 2**30)).start()
         patch.object(job.time, "sleep").start()
         self.upload = patch.object(job, "upload", return_value=[Mock(), Mock()]).start()
         self.addCleanup(patch.stopall)
@@ -127,13 +126,6 @@ class BackfillTests(unittest.TestCase):
                 self.runner.day(row()["date"], {job.key(row()): row()})
         self.assertIsNone(self.runner.outcome(row()))
         self.assertFalse((self.root / "days" / (row()["date"] + ".json")).exists())
-        self.upload.assert_not_called()
-
-    def test_low_disk_stops_before_any_document_download(self):
-        with patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=4 * 2**30)):
-            with self.assertRaisesRegex(RuntimeError, "5 GiB"):
-                self.runner.process(row(), self.portal)
-        self.portal.session.request.assert_not_called()
         self.upload.assert_not_called()
 
     def test_day_uploads_only_candidates_and_keeps_checkpoint_on_failure(self):
@@ -369,7 +361,6 @@ class PlanTests(unittest.TestCase):
                 runner.save(pending_row, "downloaded", identifier="pending-test-item")
                 raise job.BudgetExpired
             with patch.dict(os.environ, {"GITHUB_ACTIONS": "false", "IA_ACCESS_KEY": "fake", "IA_SECRET_KEY": "fake"}), \
-                 patch.object(job.shutil, "disk_usage", return_value=SimpleNamespace(free=10 * 2**30)), \
                  patch.object(job, "get_session", return_value=Mock()), patch.object(job, "run_plan", side_effect=expire):
                 result = job.main(["--upload", "--state-dir", str(state), "--minutes", "1",
                                    "--from-date", "19-12-2018", "--to-date", "19-12-2018"])

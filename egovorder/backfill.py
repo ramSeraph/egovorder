@@ -49,11 +49,6 @@ def atomic_json(path, value):
     temporary.replace(path)
 
 
-def check_space(root):
-    if shutil.disk_usage(root).free < 5 * 2**30:
-        raise RuntimeError("Less than 5 GiB free; all pending files retained")
-
-
 def document_format(data):
     """Accept validated PDF/Word files; classify HTML and empty bodies as gaps."""
     if data.lstrip().startswith(b"%PDF"):
@@ -98,7 +93,6 @@ class Backfill:
         self.root = Path(root).resolve()
         self.proxy = proxy
         self.root.mkdir(parents=True, exist_ok=True)
-        check_space(self.root)
         self.storage = FileManager(str(self.root / "data"), False, False)
         config = configparser.ConfigParser()
         config.read(Path.home() / ".config/internetarchive/ia.ini")
@@ -231,7 +225,6 @@ class Backfill:
             return self.finish_upload(row, previous)
         if previous and previous["status"] in GAP_STATUSES and not retry_unavailable:
             return previous
-        check_space(self.root)
         identifier = row.get("identifier")
         if not identifier or not row.get("href"):
             return self.save(row, "no_download_link", source_row=row)

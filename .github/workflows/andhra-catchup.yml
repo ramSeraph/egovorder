@@ -1,8 +1,6 @@
 name: Andhra catchup
 
 on:
-  schedule:
-    - cron: '0 5,11,17,23 * * *' # Every six hours; 04:30, 10:30, 16:30, 22:30 IST.
   workflow_dispatch:
     inputs:
       from_date:

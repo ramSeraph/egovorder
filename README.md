@@ -34,18 +34,14 @@ Both commands support `--help`.
 
 ## Workflows
 
-| State | Daily archive (08:30 IST) | Catch-up (every six hours) |
+| State | Daily archive (08:30 IST) | Catch-up |
 | --- | --- | --- |
-| Andhra Pradesh | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-daily.yml) | [Catch-up](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-catchup.yml) |
+| Andhra Pradesh | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-daily.yml) | [Disabled](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-catchup.yml) |
 | Telangana | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/telangana-daily.yml) | Retired |
 | Uttarakhand | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/uttarakhand-daily.yml) | Retired |
 
-- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml): historical audit gaps only, every six hours
+- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml): historical audit complete; disabled
 - [Monthly keep-alive](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml)
-
-Catch-up and backfill run at 04:30, 10:30, 16:30 and 22:30 IST. Andhra catch-up
-resumes its saved progress from the latest archived date; manual catch-up runs
-also support explicit date ranges.
 
 ## Origin and license
 

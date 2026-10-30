@@ -30,12 +30,8 @@ on:
       IA_SECRET_KEY:
         required: true
       PROXY_IP_ADDRESS:
-        required: false
+        required: true
       PROXY_AUTH:
-        required: false
-      GCP_AUTH:
-        required: false
-      GCP_PROJECT:
         required: false
 
 permissions:
@@ -81,19 +77,13 @@ jobs:
           IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
           IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
           PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
-          GCP_AUTH: ${{ secrets.GCP_AUTH }}
-          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
         run: |
           case "$ARCHIVE_MODE" in
             recent) bash scripts/archive.sh --validate ;;
             catchup) python -m egovorder.catchup --validate ;;
             *) echo "Unknown archive mode"; exit 1 ;;
           esac
-          if [[ "$SOURCE" == 'telangana_goir' ]]; then
-            [[ -n "$GCP_AUTH" && -n "$GCP_PROJECT" ]] || { echo "Set GCP_AUTH and GCP_PROJECT"; exit 1; }
-          else
-            [[ -n "$PROXY_IP_ADDRESS" ]] || { echo "Set PROXY_IP_ADDRESS"; exit 1; }
-          fi
+          [[ -n "$PROXY_IP_ADDRESS" ]] || { echo "Set PROXY_IP_ADDRESS"; exit 1; }
 
       - name: Restore unfinished downloads and progress
         id: restore
@@ -117,24 +107,12 @@ jobs:
           restore-keys: |
             egovorder-backfill-v1-latest-latest-false-
 
-      - name: Start Telangana GCP proxy
-        timeout-minutes: 5
-        if: inputs.source == 'telangana_goir'
-        id: proxy
-        uses: ramSeraph/gcp-simple-proxy-action/start@v0.0.2
-        with:
-          gcp-credentials: ${{ secrets.GCP_AUTH }}
-          gcp-project: ${{ secrets.GCP_PROJECT }}
-          gcp-zone: asia-south1-a
-          simpleproxy-basicauth: ${{ secrets.PROXY_AUTH }}
-          simpleproxy-port: 8080
-
       - name: Download and upload orders
         timeout-minutes: 212
         env:
           IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
           IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
-          PROXY_IP_ADDRESS: ${{ inputs.source != 'telangana_goir' && secrets.PROXY_IP_ADDRESS || steps.proxy.outputs.ip_address }}
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
           PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
         run: |
           if [[ "$ARCHIVE_MODE" == 'catchup' ]]; then
@@ -142,17 +120,6 @@ jobs:
           else
             python -m egovorder.catchup --recent
           fi
-
-      - name: Stop Telangana GCP proxy
-        timeout-minutes: 4
-        if: always() && inputs.source == 'telangana_goir' && steps.proxy.outputs.instance_name != ''
-        uses: ramSeraph/gcp-simple-proxy-action/stop@v0.0.2
-        with:
-          gcp-credentials: ${{ secrets.GCP_AUTH }}
-          gcp-project: ${{ secrets.GCP_PROJECT }}
-          gcp-zone: asia-south1-a
-          gcp-instance-name: ${{ steps.proxy.outputs.instance_name }}
-          gcp-fw-rule-name: ${{ steps.proxy.outputs.fw_rule_name }}
 
       - name: Save unfinished downloads and progress
         timeout-minutes: 4

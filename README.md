@@ -34,13 +34,12 @@ Both commands support `--help`.
 
 ## Workflows
 
-| State | Daily archive (08:30 IST) | Catch-up |
-| --- | --- | --- |
-| Andhra Pradesh | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-daily.yml) | [Disabled](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-catchup.yml) |
-| Telangana | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/telangana-daily.yml) | Retired |
-| Uttarakhand | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/uttarakhand-daily.yml) | Retired |
+| State | Daily archive (08:30 IST) |
+| --- | --- |
+| Andhra Pradesh | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/andhra-daily.yml) |
+| Telangana | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/telangana-daily.yml) |
+| Uttarakhand | [Daily](https://github.com/ramSeraph/egovorder/actions/workflows/uttarakhand-daily.yml) |
 
-- [Andhra backfill](https://github.com/ramSeraph/egovorder/actions/workflows/backfill.yml): historical audit complete; disabled
 - [Monthly keep-alive](https://github.com/ramSeraph/egovorder/actions/workflows/keepalive.yml)
 
 ## Origin and license

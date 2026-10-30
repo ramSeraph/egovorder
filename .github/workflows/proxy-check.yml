@@ -1,0 +1,84 @@
+name: Check government portal proxies
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: government-portal-proxy-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check all states without a proxy
+        timeout-minutes: 10
+        run: python -m egovorder.proxy_check --method direct
+
+      - name: Check all states through PROXY_IP_ADDRESS
+        if: always()
+        timeout-minutes: 10
+        env:
+          PROXY_IP_ADDRESS: ${{ secrets.PROXY_IP_ADDRESS }}
+          PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
+        run: python -m egovorder.proxy_check --method configured
+
+      - name: Start GCP proxy
+        if: always()
+        id: proxy
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: ramSeraph/gcp-simple-proxy-action/start@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          simpleproxy-basicauth: ${{ secrets.PROXY_AUTH }}
+          simpleproxy-port: 8080
+
+      - name: Check all states through GCP
+        if: always()
+        timeout-minutes: 10
+        env:
+          PROXY_IP_ADDRESS: ${{ steps.proxy.outputs.ip_address }}
+          PROXY_AUTH: ${{ secrets.PROXY_AUTH }}
+        run: python -m egovorder.proxy_check --method gcp
+
+      - name: Stop GCP proxy
+        if: always() && steps.proxy.outputs.instance_name != ''
+        timeout-minutes: 4
+        uses: ramSeraph/gcp-simple-proxy-action/stop@v0.0.2
+        with:
+          gcp-credentials: ${{ secrets.GCP_AUTH }}
+          gcp-project: ${{ secrets.GCP_PROJECT }}
+          gcp-zone: asia-south1-a
+          gcp-instance-name: ${{ steps.proxy.outputs.instance_name }}
+          gcp-fw-rule-name: ${{ steps.proxy.outputs.fw_rule_name }}
+
+      - name: Summarize results
+        if: always()
+        run: python -m egovorder.proxy_check --summary
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-check-results
+          path: proxy-check-results/
+          retention-days: 7
